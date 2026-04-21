@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "services/api-gateway",
+    "services/auth-service",
+    "services/game-engine"
+]
+resolver = "2"

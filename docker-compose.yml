@@ -1,0 +1,43 @@
+services:
+  # 1. Base de Datos Relacional (PostgreSQL) para Usuarios/Puntajes
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: arena_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. Base de Datos de Documentos (MongoDB) para las Preguntas
+  mongo-db:
+    image: mongo:6.0
+    container_name: arena_mongo
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  # 3. Base de Datos Clave-Valor (Redis) para el Leaderboard en vivo
+  redis-db:
+    image: redis:7-alpine
+    container_name: arena_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+# Definición de volúmenes persistentes
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:
