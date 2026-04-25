@@ -1,0 +1,17 @@
+syntax = "proto3";
+package arena.user;
+
+service UserService {
+  // Llamada síncrona (Unary) para el Onboarding 
+  rpc JoinArena (JoinRequest) returns (JoinResponse);
+}
+
+message JoinRequest {
+  string username = 1; // Input de texto minimalista [cite: 16]
+}
+
+message JoinResponse {
+  bool success = 1;
+  string user_id = 2; // ID único generado para la sesión
+  string message = 3; [cite_start]// Ejemplo: "Esperando al moderador..." [cite: 21]
+}
