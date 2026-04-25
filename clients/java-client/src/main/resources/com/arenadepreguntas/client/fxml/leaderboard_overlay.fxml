@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.shape.Rectangle?>
+
+<StackPane fx:id="leaderboardOverlay" managed="false" visible="false" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.arenadepreguntas.client.controller.LeaderboardController">
+    <children>
+        <!-- Scrim (Semi-transparent dark background) -->
+        <Rectangle fill="rgba(0,0,0,0.55)" height="1080.0" width="1920.0" />
+
+        <!-- Leaderboard Card (slides up from bottom) -->
+        <VBox fx:id="leaderboardCard" alignment="TOP_CENTER" spacing="16.0" style="-fx-padding: 24; -fx-max-width: 85%; -fx-alignment: top-center;" styleClass="card-leaderboard-surface" StackPane.alignment="BOTTOM_CENTER">
+            <children>
+                <!-- Header -->
+                <Label styleClass="heading-large" text="🏆 Leaderboard" />
+
+                <!-- Leaderboard Rows Container -->
+                <VBox fx:id="leaderboardRows" spacing="0.0" style="-fx-padding: 12 0 24 0;">
+                    <children>
+                        <!-- Row 1: 🥇 StellarAce -->
+                        <HBox spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                            <children>
+                                <Label styleClass="leaderboard-rank" text="🥇 1" />
+                                <Label styleClass="leaderboard-username" text="StellarAce" HBox.hgrow="ALWAYS" />
+                                <Label styleClass="leaderboard-score" text="3,400" />
+                            </children>
+                        </HBox>
+
+                        <!-- Row 2: 🥈 CosmicBee -->
+                        <HBox spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                            <children>
+                                <Label styleClass="leaderboard-rank" text="🥈 2" />
+                                <Label styleClass="leaderboard-username" text="CosmicBee" HBox.hgrow="ALWAYS" />
+                                <Label styleClass="leaderboard-score" text="2,950" />
+                            </children>
+                        </HBox>
+
+                        <!-- Row 3: 🥉 NovaBolt -->
+                        <HBox spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                            <children>
+                                <Label styleClass="leaderboard-rank" text="🥉 3" />
+                                <Label styleClass="leaderboard-username" text="NovaBolt" HBox.hgrow="ALWAYS" />
+                                <Label styleClass="leaderboard-score" text="2,100" />
+                            </children>
+                        </HBox>
+
+                        <!-- Row 4: PixelFox -->
+                        <HBox spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                            <children>
+                                <Label styleClass="leaderboard-rank" text="4" />
+                                <Label styleClass="leaderboard-username" text="PixelFox" HBox.hgrow="ALWAYS" />
+                                <Label styleClass="leaderboard-score" text="1,800" />
+                            </children>
+                        </HBox>
+
+                        <!-- Row 5: Player (Self) -->
+                        <HBox spacing="16.0" styleClass="leaderboard-row,leaderboard-row-self" style="-fx-padding: 12 16;">
+                            <children>
+                                <Label styleClass="leaderboard-rank" text="5" />
+                                <Label fx:id="selfLeaderboardUsername" styleClass="leaderboard-username,leaderboard-username-self" text="[You]" HBox.hgrow="ALWAYS" />
+                                <Label fx:id="selfLeaderboardScore" styleClass="leaderboard-score" text="1,250" />
+                            </children>
+                        </HBox>
+                    </children>
+                </VBox>
+
+                <!-- Next Question Button -->
+                <Button fx:id="nextQuestionButton" minHeight="70.0" minWidth="1.0" onAction="#handleNextQuestion" prefWidth="Infinity" styleClass="btn-chunky,btn-next" text="NEXT QUESTION ➡" />
+            </children>
+        </VBox>
+    </children>
+</StackPane>

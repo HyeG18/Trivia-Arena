@@ -1,0 +1,425 @@
+/* ============================================================================
+   Arena de Preguntas — Kahoot-Style Design System
+   ============================================================================ */
+
+/* Global Color Palette */
+:root {
+    -fx-base: #FFFFFF;
+    -fx-background-color: linear-gradient(to bottom, #6A0DAD, #AE63E4);
+}
+
+/* Font Fallback Stack (no @import - use system fonts) */
+* {
+    -fx-font-family: 'Fredoka', 'Nunito', 'Arial Rounded MT Bold', 'Arial', sans-serif;
+}
+
+/* ============================================================================
+   Root Background — Purple Gradient
+   ============================================================================ */
+
+.root {
+    -fx-background-color: linear-gradient(to bottom, #6A0DAD, #AE63E4);
+}
+
+/* ============================================================================
+   Typography Base Classes
+   ============================================================================ */
+
+.game-title {
+    -fx-font-size: 42px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #FFFFFF;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.4), 8, 0.0, 0, 4);
+}
+
+.heading-large {
+    -fx-font-size: 28px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1A1A2E;
+}
+
+.heading-medium {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1A1A2E;
+}
+
+.heading-small {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1A1A2E;
+}
+
+.label-waiting {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #FFFFFF;
+}
+
+.label-username {
+    -fx-font-size: 16px;
+    -fx-text-fill: #FFFFFF;
+}
+
+.label-question-meta {
+    -fx-font-size: 14px;
+    -fx-text-fill: #999999;
+}
+
+.label-score {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #FFFFFF;
+}
+
+.label-rank {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1A1A2E;
+}
+
+/* ============================================================================
+   Pulse Animation (for waiting state)
+   ============================================================================ */
+
+@keyframes pulse {
+    0% {
+        -fx-opacity: 1.0;
+    }
+
+    50% {
+        -fx-opacity: 0.5;
+    }
+
+    100% {
+        -fx-opacity: 1.0;
+    }
+}
+
+.pulse {
+    -fx-opacity: 1.0;
+}
+
+/* ============================================================================
+   White Surface Card Styling
+   ============================================================================ */
+
+.card-surface {
+    -fx-background-color: #FFFFFF;
+    -fx-background-radius: 24;
+    -fx-border-color: #1A1A2E;
+    -fx-border-width: 3;
+    -fx-border-radius: 24;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.2), 0, 0, 0, 8);
+}
+
+.card-leaderboard-surface {
+    -fx-background-color: #FFFFFF;
+    -fx-background-radius: 28 28 0 0;
+    -fx-border-color: #1A1A2E;
+    -fx-border-width: 3 3 0 0;
+    -fx-border-radius: 28 28 0 0;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.2), 0, 0, 0, 8);
+}
+
+/* ============================================================================
+   Text Fields
+   ============================================================================ */
+
+.text-field {
+    -fx-font-size: 22px;
+    -fx-padding: 12px;
+    -fx-background-radius: 16;
+    -fx-border-radius: 16;
+    -fx-border-width: 3;
+    -fx-border-color: #1A1A2E;
+    -fx-control-inner-background: #FFFFFF;
+    -fx-text-fill: #1A1A2E;
+    -fx-alignment: center;
+}
+
+.text-field:focused {
+    -fx-border-color: #6A0DAD;
+    -fx-effect: dropshadow(gaussian, rgba(106, 13, 173, 0.3), 0, 0, 0, 6);
+}
+
+/* ============================================================================
+   Chunky 3D Buttons — The Core Kahoot Effect
+   ============================================================================ */
+
+.btn-chunky {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #FFFFFF;
+    -fx-padding: 15px 20px;
+    -fx-background-radius: 20;
+    -fx-border-radius: 20;
+    -fx-border-width: 3;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.25), 0, 0, 0, 6);
+}
+
+.btn-chunky:hover {
+    -fx-translate-y: -2;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.3), 0, 0, 0, 8);
+}
+
+.btn-chunky:pressed {
+    -fx-translate-y: 4;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.15), 0, 0, 0, 2);
+}
+
+/* Play Button — Main Entry Button */
+.btn-play {
+    -fx-background-color: #6A0DAD;
+    -fx-border-color: #4A0A7D;
+    -fx-font-size: 24px;
+    -fx-padding: 18px 20px;
+}
+
+.btn-play:hover {
+    -fx-background-color: #7A1ABD;
+}
+
+.btn-play:pressed {
+    -fx-background-color: #5A0A9D;
+}
+
+/* Answer Buttons */
+.btn-answer {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #FFFFFF;
+    -fx-padding: 18px 16px;
+    -fx-background-radius: 20;
+    -fx-border-radius: 20;
+    -fx-border-width: 3;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.25), 0, 0, 0, 6);
+    -fx-min-height: 80px;
+    -fx-max-width: Infinity;
+}
+
+.btn-answer:hover {
+    -fx-translate-y: -2;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.3), 0, 0, 0, 8);
+}
+
+.btn-answer:pressed {
+    -fx-translate-y: 4;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.15), 0, 0, 0, 2);
+}
+
+.btn-answer-red {
+    -fx-background-color: #FF4B4B;
+    -fx-border-color: #E63939;
+}
+
+.btn-answer-red:hover {
+    -fx-background-color: #FF6464;
+}
+
+.btn-answer-red:pressed {
+    -fx-background-color: #E63939;
+}
+
+.btn-answer-blue {
+    -fx-background-color: #2D8CFF;
+    -fx-border-color: #1B5FD8;
+}
+
+.btn-answer-blue:hover {
+    -fx-background-color: #4D9CFF;
+}
+
+.btn-answer-blue:pressed {
+    -fx-background-color: #1B5FD8;
+}
+
+.btn-answer-yellow {
+    -fx-background-color: #FFCB05;
+    -fx-border-color: #E6B700;
+    -fx-text-fill: #1A1A2E;
+}
+
+.btn-answer-yellow:hover {
+    -fx-background-color: #FFD91F;
+}
+
+.btn-answer-yellow:pressed {
+    -fx-background-color: #E6B700;
+}
+
+.btn-answer-green {
+    -fx-background-color: #00C853;
+    -fx-border-color: #009B3F;
+}
+
+.btn-answer-green:hover {
+    -fx-background-color: #1FD660;
+}
+
+.btn-answer-green:pressed {
+    -fx-background-color: #009B3F;
+}
+
+.btn-answer:disabled {
+    -fx-opacity: 0.45;
+    -fx-cursor: default;
+}
+
+.btn-answer-selected {
+    -fx-border-width: 5;
+    -fx-border-color: #FFFFFF;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.35), 0, 0, 0, 10);
+}
+
+.btn-answer-dimmed {
+    -fx-opacity: 0.45;
+}
+
+/* Next Question Button */
+.btn-next {
+    -fx-background-color: #6A0DAD;
+    -fx-border-color: #4A0A7D;
+    -fx-font-size: 22px;
+    -fx-padding: 16px 20px;
+    -fx-min-height: 70px;
+}
+
+.btn-next:hover {
+    -fx-background-color: #7A1ABD;
+}
+
+.btn-next:pressed {
+    -fx-background-color: #5A0A9D;
+}
+
+/* Emoji Reaction Buttons — Small and Chunky */
+.btn-emoji {
+    -fx-font-size: 36px;
+    -fx-background-color: rgba(255, 255, 255, 0.25);
+    -fx-border-color: rgba(255, 255, 255, 0.4);
+    -fx-border-width: 2;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+    -fx-padding: 8px;
+    -fx-min-width: 64;
+    -fx-min-height: 64;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.15), 0, 0, 0, 4);
+}
+
+.btn-emoji:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.35);
+    -fx-translate-y: -2;
+}
+
+.btn-emoji:pressed {
+    -fx-background-color: rgba(255, 255, 255, 0.45);
+    -fx-translate-y: 2;
+}
+
+/* ============================================================================
+   Progress Bar (Timer)
+   ============================================================================ */
+
+.progress-bar {
+    -fx-padding: 0;
+    -fx-background-radius: 0;
+    -fx-control-inner-background: #E0E0E0;
+}
+
+.progress-bar .bar {
+    -fx-background-color: #00C853;
+}
+
+.progress-bar.timer-warning .bar {
+    -fx-background-color: #FFCB05;
+}
+
+.progress-bar.timer-danger .bar {
+    -fx-background-color: #FF4B4B;
+}
+
+/* ============================================================================
+   Avatar Circle
+   ============================================================================ */
+
+.avatar-circle {
+    -fx-background-color: #6A0DAD;
+    -fx-background-radius: 32;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.2), 0, 0, 0, 6);
+    -fx-min-width: 64;
+    -fx-min-height: 64;
+    -fx-alignment: center;
+}
+
+.avatar-initial {
+    -fx-font-size: 28px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #FFFFFF;
+}
+
+/* ============================================================================
+   Rank Badge
+   ============================================================================ */
+
+.rank-badge {
+    -fx-background-color: #FFD700;
+    -fx-background-radius: 20;
+    -fx-border-radius: 20;
+    -fx-padding: 8px 12px;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1A1A2E;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.15), 0, 0, 0, 4);
+}
+
+/* ============================================================================
+   Leaderboard Styles
+   ============================================================================ */
+
+.leaderboard-row {
+    -fx-padding: 12px 16px;
+    -fx-border-color: #EEEEEE;
+    -fx-border-width: 0 0 1 0;
+}
+
+.leaderboard-row-self {
+    -fx-background-color: #EDE7F6;
+}
+
+.leaderboard-rank {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1A1A2E;
+    -fx-min-width: 50;
+}
+
+.leaderboard-username {
+    -fx-font-size: 16px;
+    -fx-text-fill: #1A1A2E;
+    -fx-max-width: Infinity;
+}
+
+.leaderboard-username-self {
+    -fx-font-weight: bold;
+    -fx-text-fill: #6A0DAD;
+}
+
+.leaderboard-score {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1A1A2E;
+    -fx-min-width: 80;
+    -fx-text-alignment: right;
+}
+
+/* ============================================================================
+   Scrim (Semi-transparent Overlay)
+   ============================================================================ */
+
+.scrim {
+    -fx-fill: rgba(0, 0, 0, 0.55);
+}
