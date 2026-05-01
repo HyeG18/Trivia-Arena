@@ -7,11 +7,11 @@ service UserService {
 }
 
 message JoinRequest {
-  string username = 1; // Input de texto minimalista [cite: 16]
+  string username = 1;
 }
 
 message JoinResponse {
   bool success = 1;
-  string user_id = 2; // ID único generado para la sesión
-  string message = 3; [cite_start]// Ejemplo: "Esperando al moderador..." [cite: 21]
+  string user_id = 2;
+  string message = 3;
 }
