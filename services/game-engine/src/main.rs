@@ -53,38 +53,108 @@ impl GameService for MyGameServer {
         let (tx, client_rx) = mpsc::channel(128);
 
         let redis_client = self.redis_client.clone();
+        let tx_global = self.tx_to_clients.clone(); 
+        // ¡NUEVO! Clonamos la conexión de Mongo para usarla en el hilo de fondo
+        let mongo_client = self.mongo_client.clone(); 
 
         tokio::spawn(async move {
             let mut redis_conn = match redis_client.get_multiplexed_async_connection().await {
                 Ok(conn) => conn,
-                Err(e) => {
-                    eprintln!("Error conectando a Redis en el stream: {}", e);
-                    return;
-                }
+                Err(e) => { eprintln!("Error conectando a Redis: {}", e); return; }
             };
 
-            // Escuchamos los mensajes (respuestas) que llegan del jugador
             while let Ok(Some(message)) = in_stream.message().await {
-                println!("🎮 Respuesta recibida del cliente: {:?}", message);
-                
-                // Aquí extraemos el ID del jugador (dependerá de cómo definiste tu .proto)
-                // Por ahora, usaremos un nombre estático para probar la conexión
-                let user_id = "Jugador_Pro"; 
-                
-                // Lógica temporal: Asignamos 1500 puntos simulando una respuesta correcta
-                let puntos_ganados = 1500;
+                // ¡NUEVO! Extraemos los datos REALES del mensaje de gRPC
+                if let Some(game::client_message::Payload::Answer(player_response)) = message.payload {
+                    let user_id = player_response.user_id;
+                    let user_answer = player_response.answer;
+                    
+                    println!("🎮 Respuesta recibida de {}: {}", user_id, user_answer);
 
-                // MAGIA DE REDIS: ZINCRBY suma los puntos y ordena el leaderboard automáticamente
-                let result: Result<(), redis::RedisError> = redis::cmd("ZINCRBY")
-                    .arg("arena_leaderboard")
-                    .arg(puntos_ganados)
-                    .arg(user_id)
-                    .query_async(&mut redis_conn)
-                    .await;
+                    // ==========================================
+                    // 1. VALIDACIÓN CON MONGODB
+                    // ==========================================
+                    let db = mongo_client.database("arena_db");
+                    let collection = db.collection::<MongoQuestion>("questions");
+                    
+                    let mut puntos_ganados = 0;
+                    let mut es_correcta = false;
 
-                match result {
-                    Ok(_) => println!("🏆 ¡Puntaje actualizado en Redis! {} ganó {} pts.", user_id, puntos_ganados),
-                    Err(e) => eprintln!("❌ Error guardando puntaje en Redis: {}", e),
+                    // Buscamos la pregunta en Mongo (tomamos la primera para la prueba)
+                    if let Ok(Some(question)) = collection.find_one(None, None).await {
+                        // Buscamos el texto exacto de la opción correcta
+                        let correct_text = &question.options[question.correct_option_index as usize];
+                        
+                        // ¿Lo que envió el jugador coincide con la base de datos?
+                        if user_answer == *correct_text {
+                            // CÁLCULO DE PUNTAJE DINÁMICO
+                            let time_limit_ms = question.time_limit_sec * 1000;
+                            let response_time = player_response.response_time_ms;
+                            
+                            // Si respondió después del límite (por lag), le damos el puntaje mínimo
+                            if response_time >= time_limit_ms {
+                                puntos_ganados = 300; 
+                            } else {
+                                // Fórmula: 1500 * (Tiempo Restante / Tiempo Total)
+                                let tiempo_restante = time_limit_ms - response_time;
+                                let calc = (1500.0 * (tiempo_restante as f64 / time_limit_ms as f64)) as i32;
+                                
+                                // Garantizamos que mínimo gane 300 puntos por acertar
+                                puntos_ganados = std::cmp::max(300, calc);
+                            }
+                            
+                            es_correcta = true;
+                            println!("✅ ¡Respuesta correcta de {}!", user_id);
+                        } else {
+                            println!("❌ {} respondió incorrectamente. Esperaba: {}", user_id, correct_text);
+                        }
+                    }
+
+                    // ==========================================
+                    // 2. GUARDAR EN REDIS Y OBTENER TOP 5
+                    // ==========================================
+                    // ZINCRBY guardará los puntos (si es incorrecta sumará 0, pero lo mantendrá en el ranking)
+                    let result: Result<(), redis::RedisError> = redis::cmd("ZINCRBY")
+                        .arg("arena_leaderboard")
+                        .arg(puntos_ganados)
+                        .arg(&user_id)
+                        .query_async(&mut redis_conn)
+                        .await;
+
+                    if result.is_ok() {
+                        let top_5_result: Result<Vec<(String, i32)>, redis::RedisError> = redis::cmd("ZREVRANGE")
+                            .arg("arena_leaderboard").arg(0).arg(4).arg("WITHSCORES")
+                            .query_async(&mut redis_conn).await;
+                            
+                        if let Ok(top_5) = top_5_result {
+                            let mut top_players = Vec::new();
+                            
+                            for (index, (username, score)) in top_5.into_iter().enumerate() {
+                                // Determinamos si esta fila de la tabla debe pintar verde o rojo en Java
+                                let is_this_player = username == user_id;
+                                let is_correct = if is_this_player { es_correcta } else { true }; 
+
+                                top_players.push(game::PlayerScore {
+                                    username,
+                                    score,
+                                    rank: (index + 1) as i32,
+                                    last_answer_correct: is_correct, 
+                                });
+                            }
+                            
+                            let leaderboard_update = game::LeaderboardUpdate {
+                                top_players,
+                                current_player: None, 
+                                total_responses: 1, 
+                            };
+                            
+                            let msg = ServerMessage { 
+                                event: Some(game::server_message::Event::Leaderboard(leaderboard_update)) 
+                            };
+                            let _ = tx_global.send(msg);
+                            println!("📊 Leaderboard actualizado y enviado.");
+                        }
+                    }
                 }
             }
         });
