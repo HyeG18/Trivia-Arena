@@ -244,6 +244,14 @@ class LiveRoomView(QWidget):
         self._kpi_responses.set_value(str(total_responses))
         self._render_leaderboard(players)
 
+    def on_players_connected_changed(self, count: int) -> None:
+        """Update the KPI card when player count changes."""
+        self._kpi_players.set_value(str(count))
+
+    def on_question_launched(self, text: str, options: list, time_limit: int) -> None:
+        """Update the active question display when a question is launched."""
+        self._active_q_label.setText(text)
+
     def on_stream_connected(self) -> None:
         self._stream_status_lbl.setText("● STREAM ACTIVE")
         self._stream_status_lbl.setStyleSheet(

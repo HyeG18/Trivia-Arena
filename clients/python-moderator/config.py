@@ -1,6 +1,9 @@
 GRPC_HOST = "localhost"
 GRPC_PORT = 8080
 
+REDIS_HOST = "localhost"
+REDIS_PORT = 6380
+
 MONGO_URI = "mongodb://admin:secretpassword@localhost:27018"
 MONGO_DB = "arena_db"
 QUESTIONS_COLLECTION = "questions"

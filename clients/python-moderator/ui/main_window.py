@@ -59,6 +59,12 @@ class MainWindow(QMainWindow):
         self._stream_worker.leaderboard_updated.connect(
             self._live_room.on_leaderboard_updated
         )
+        self._stream_worker.players_connected_changed.connect(
+            self._live_room.on_players_connected_changed
+        )
+        self._stream_worker.question_launched.connect(
+            self._live_room.on_question_launched
+        )
         self._stream_worker.error_occurred.connect(self._on_stream_error)
         self._stream_worker.start()
 
