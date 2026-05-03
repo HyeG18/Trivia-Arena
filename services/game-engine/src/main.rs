@@ -77,13 +77,52 @@ impl GameService for MyGameServer {
         &self,
         request: Request<Streaming<ClientMessage>>,
     ) -> Result<Response<Self::PlayStreamStream>, Status> {
-        let mut in_stream = request.into_inner(); 
-        let mut rx = self.tx_to_clients.subscribe(); 
+        let mut in_stream = request.into_inner();
+        let mut rx = self.tx_to_clients.subscribe();
         let (tx, client_rx) = mpsc::channel(128);
 
         let redis_client = self.redis_client.clone();
-        let tx_global = self.tx_to_clients.clone(); 
-        let mongo_client = self.mongo_client.clone(); 
+        let tx_global = self.tx_to_clients.clone();
+        let mongo_client = self.mongo_client.clone();
+
+        // NUEVO: Enviar pregunta actual al cliente que se acaba de conectar
+        let redis_for_current = redis_client.clone();
+        let tx_for_current = tx.clone();
+        tokio::spawn(async move {
+            if let Ok(mut conn) = redis_for_current.get_async_connection().await {
+                // Obtener pregunta actual de Redis (almacenada como hash)
+                let question_data: Result<(String, i32), _> = redis::cmd("HGETALL")
+                    .arg("current_question")
+                    .query_async(&mut conn)
+                    .await;
+
+                if let Ok((text, time_limit)) = question_data {
+                    if !text.is_empty() {
+                        // Obtener opciones como lista en Redis
+                        let options: Vec<String> = redis::cmd("LRANGE")
+                            .arg("current_question_options")
+                            .arg(0)
+                            .arg(-1)
+                            .query_async(&mut conn)
+                            .await
+                            .unwrap_or_default();
+
+                        if !options.is_empty() {
+                            let question = game::QuestionPayload {
+                                text,
+                                options,
+                                time_limit_sec: time_limit,
+                            };
+                            let msg = ServerMessage {
+                                event: Some(game::server_message::Event::NewQuestion(question))
+                            };
+                            let _ = tx_for_current.send(Ok(msg)).await;
+                            println!("📨 Pregunta actual reenviada a nuevo cliente");
+                        }
+                    }
+                }
+            }
+        });
 
         tokio::spawn(async move {
             let mut redis_conn = match redis_client.get_multiplexed_async_connection().await {
@@ -95,7 +134,7 @@ impl GameService for MyGameServer {
                 if let Some(game::client_message::Payload::Answer(player_response)) = message.payload {
                     let user_id = player_response.user_id;
                     let user_answer = player_response.answer;
-                    
+
                     // 🛡️ 1. VALIDACIÓN DE SEGURIDAD Y OBTENCIÓN DEL USERNAME
                     let session_key = format!("session:{}", user_id);
                     let username_opt: Option<String> = redis::cmd("GET")
@@ -108,36 +147,47 @@ impl GameService for MyGameServer {
                         Some(name) => name,
                         None => {
                             println!("🚨 Bloqueado: Intento de respuesta de ID inválido o desconectado ({})", user_id);
-                            continue; // Ignora esta respuesta y no hace caer el servidor
+                            continue;
                         }
                     };
 
                     println!("🎮 Respuesta validada y recibida de {}: {}", username, user_answer);
 
                     // ==========================================
-                    // 2. VALIDACIÓN CON MONGODB
+                    // 2. VALIDACIÓN CON PREGUNTA ACTUAL
                     // ==========================================
-                    let db = mongo_client.database("arena_db");
-                    let collection = db.collection::<MongoQuestion>("questions");
-                    
                     let mut puntos_ganados = 0;
                     let mut es_correcta = false;
 
-                    if let Ok(Some(question)) = collection.find_one(None, None).await {
-                        let correct_text = &question.options[question.correct_option_index as usize];
-                        
-                        if user_answer == *correct_text {
-                            let time_limit_ms = question.time_limit_sec * 1000;
-                            let response_time = player_response.response_time_ms;
-                            
-                            let strategy: Box<dyn ScoringStrategy> = Box::new(DynamicScoring);
-                            
-                            puntos_ganados = strategy.calculate_score(response_time, time_limit_ms);
-                            
-                            es_correcta = true;
-                            println!("✅ ¡Acertó en {} ms! {} ganó {} pts usando Strategy.", response_time, username, puntos_ganados);
-                        } else {
-                            println!("❌ {} respondió incorrectamente. Puntos: 0", username);
+                    // Obtener pregunta actual almacenada en Redis
+                    let question_data: Result<(String, i32), _> = redis::cmd("HGETALL")
+                        .arg("current_question")
+                        .query_async(&mut redis_conn)
+                        .await;
+
+                    if let Ok((text, time_limit_sec)) = question_data {
+                        if !text.is_empty() {
+                            let options: Vec<String> = redis::cmd("LRANGE")
+                                .arg("current_question_options")
+                                .arg(0)
+                                .arg(-1)
+                                .query_async(&mut redis_conn)
+                                .await
+                                .unwrap_or_default();
+
+                            if !options.is_empty() && user_answer == options[0] {
+                                // Primera opción es la respuesta correcta
+                                let time_limit_ms = time_limit_sec * 1000;
+                                let response_time = player_response.response_time_ms;
+
+                                let strategy: Box<dyn ScoringStrategy> = Box::new(DynamicScoring);
+                                puntos_ganados = strategy.calculate_score(response_time, time_limit_ms);
+
+                                es_correcta = true;
+                                println!("✅ ¡Acertó en {} ms! {} ganó {} pts", response_time, username, puntos_ganados);
+                            } else {
+                                println!("❌ {} respondió incorrectamente.", username);
+                            }
                         }
                     }
 
@@ -147,7 +197,7 @@ impl GameService for MyGameServer {
                     let result: Result<(), redis::RedisError> = redis::cmd("ZINCRBY")
                         .arg("arena_leaderboard")
                         .arg(puntos_ganados)
-                        .arg(&username) // Cambiado a username
+                        .arg(&username)
                         .query_async(&mut redis_conn)
                         .await;
 
@@ -155,33 +205,55 @@ impl GameService for MyGameServer {
                         let top_5_result: Result<Vec<(String, i32)>, redis::RedisError> = redis::cmd("ZREVRANGE")
                             .arg("arena_leaderboard").arg(0).arg(4).arg("WITHSCORES")
                             .query_async(&mut redis_conn).await;
-                            
+
+                        // NOVO: Obtener el score total actual del jugador
+                        let current_player_score: i32 = redis::cmd("ZSCORE")
+                            .arg("arena_leaderboard")
+                            .arg(&username)
+                            .query_async::<_, Option<i32>>(&mut redis_conn)
+                            .await
+                            .unwrap_or(None)
+                            .unwrap_or(0);
+
+                        // Obtener el rank del jugador actual
+                        let current_player_rank: i32 = redis::cmd("ZREVRANK")
+                            .arg("arena_leaderboard")
+                            .arg(&username)
+                            .query_async::<_, Option<i32>>(&mut redis_conn)
+                            .await
+                            .unwrap_or(None)
+                            .map(|r| r + 1)
+                            .unwrap_or(0);
+
                         if let Ok(top_5) = top_5_result {
                             let mut top_players = Vec::new();
-                            
-                            for (index, (board_username, score)) in top_5.into_iter().enumerate() {
-                                let is_this_player = board_username == username;
-                                let is_correct = if is_this_player { es_correcta } else { true }; 
 
+                            for (index, (board_username, score)) in top_5.into_iter().enumerate() {
                                 top_players.push(game::PlayerScore {
                                     username: board_username,
                                     score,
                                     rank: (index + 1) as i32,
-                                    last_answer_correct: is_correct, 
+                                    last_answer_correct: true,
                                 });
                             }
-                            
+
+                            // NOVO: Incluir el jugador actual en la respuesta con score total
                             let leaderboard_update = game::LeaderboardUpdate {
                                 top_players,
-                                current_player: None, 
-                                total_responses: 1, 
+                                current_player: Some(game::PlayerScore {
+                                    username: username.clone(),
+                                    score: current_player_score,
+                                    rank: current_player_rank,
+                                    last_answer_correct: es_correcta,
+                                }),
+                                total_responses: 1,
                             };
-                            
-                            let msg = ServerMessage { 
-                                event: Some(game::server_message::Event::Leaderboard(leaderboard_update)) 
+
+                            let msg = ServerMessage {
+                                event: Some(game::server_message::Event::Leaderboard(leaderboard_update))
                             };
                             let _ = tx_global.send(msg);
-                            println!("📊 Leaderboard actualizado y enviado.");
+                            println!("📊 Leaderboard actualizado y enviado con score total: {}", current_player_score);
                         }
                     }
                 }
@@ -194,7 +266,7 @@ impl GameService for MyGameServer {
             }
         });
 
-        let out_stream = ReceiverStream::new(client_rx); 
+        let out_stream = ReceiverStream::new(client_rx);
         Ok(Response::new(out_stream))
     }
 
@@ -221,29 +293,59 @@ impl GameService for MyGameServer {
     }
 
     // ==========================================
-    // ACTUALIZACIÓN: LANZAR PREGUNTA DESDE MONGO
+    // LANZAR PREGUNTA DESDE EL MODERADOR
     // ==========================================
-    async fn launch_question(&self, _request: Request<QuestionPayload>) -> Result<Response<ModeratorAck>, Status> {
-        let db = self.mongo_client.database("arena_db");
-        let collection = db.collection::<MongoQuestion>("questions");
+    async fn launch_question(&self, request: Request<QuestionPayload>) -> Result<Response<ModeratorAck>, Status> {
+        let question = request.into_inner();
 
-        if let Ok(Some(question)) = collection.find_one(None, None).await {
-            println!("📚 Pregunta obtenida de MongoDB: {}", question.text);
+        println!("📚 Pregunta recibida del moderador: {}", question.text);
 
-            let payload = QuestionPayload {
-                text: question.text,
-                options: question.options,
-                time_limit_sec: question.time_limit_sec,
-            };
+        // NUEVO: Guardar la pregunta en Redis para que nuevos clientes la reciban
+        let mut redis_conn = match self.redis_client.get_async_connection().await {
+            Ok(conn) => conn,
+            Err(_) => return Err(Status::internal("Error al conectar con Redis")),
+        };
 
-            let msg = ServerMessage { event: Some(game::server_message::Event::NewQuestion(payload)) };
-            let _ = self.tx_to_clients.send(msg);
+        // Guardar texto y tiempo límite de la pregunta
+        let _: redis::RedisResult<()> = redis::cmd("HSET")
+            .arg("current_question")
+            .arg("text")
+            .arg(&question.text)
+            .arg("time_limit_sec")
+            .arg(question.time_limit_sec)
+            .query_async(&mut redis_conn)
+            .await;
 
-            Ok(Response::new(ModeratorAck { success: true }))
-        } else {
-            println!("⚠️ No hay preguntas en MongoDB.");
-            Ok(Response::new(ModeratorAck { success: false }))
+        // Limpiar opciones anteriores y guardar nuevas opciones como lista
+        let _: redis::RedisResult<()> = redis::cmd("DEL")
+            .arg("current_question_options")
+            .query_async(&mut redis_conn)
+            .await;
+
+        if !question.options.is_empty() {
+            let _: redis::RedisResult<()> = redis::cmd("RPUSH")
+                .arg("current_question_options")
+                .arg(&question.options)
+                .query_async(&mut redis_conn)
+                .await;
         }
+
+        // Limpiar el leaderboard de la pregunta anterior para empezar fresco
+        let _: redis::RedisResult<()> = redis::cmd("DEL")
+            .arg("arena_leaderboard")
+            .query_async(&mut redis_conn)
+            .await;
+
+        println!("✅ Pregunta almacenada en Redis para nuevos clientes");
+        println!("🧹 Leaderboard limpiado para nueva ronda");
+
+        // Broadcast pregunta a todos los clientes conectados
+        let msg = ServerMessage {
+            event: Some(game::server_message::Event::NewQuestion(question))
+        };
+        let _ = self.tx_to_clients.send(msg);
+
+        Ok(Response::new(ModeratorAck { success: true }))
     }
 
     // ==========================================
