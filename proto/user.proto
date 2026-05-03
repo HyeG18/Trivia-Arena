@@ -2,12 +2,14 @@ syntax = "proto3";
 package arena.user;
 
 service UserService {
-  // Llamada síncrona (Unary) para el Onboarding 
+  // Llamada síncrona (Unary) para el Onboarding (Registro/Login)
   rpc JoinArena (JoinRequest) returns (JoinResponse);
 }
 
 message JoinRequest {
   string username = 1;
+  // NUEVO: Contraseña para validar si el usuario ya existe o registrarlo
+  string password = 2; 
 }
 
 message JoinResponse {
