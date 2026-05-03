@@ -21,51 +21,51 @@
                 <!-- Header -->
                 <Label styleClass="heading-large" text="🏆 Leaderboard" />
 
-                <!-- Leaderboard Rows Container -->
+                <!-- Leaderboard Rows Container — all labels have fx:id so the controller can populate from gRPC data -->
                 <VBox fx:id="leaderboardRows" spacing="0.0" style="-fx-padding: 12 0 24 0;">
                     <children>
-                        <!-- Row 1: 🥇 StellarAce -->
-                        <HBox spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                        <!-- Row 1 -->
+                        <HBox fx:id="row1" spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
                             <children>
-                                <Label styleClass="leaderboard-rank" text="🥇 1" />
-                                <Label styleClass="leaderboard-username" text="StellarAce" HBox.hgrow="ALWAYS" />
-                                <Label styleClass="leaderboard-score" text="3,400" />
+                                <Label fx:id="rank1" styleClass="leaderboard-rank" text="🥇 1" />
+                                <Label fx:id="username1" styleClass="leaderboard-username" text="—" HBox.hgrow="ALWAYS" />
+                                <Label fx:id="score1" styleClass="leaderboard-score" text="0" />
                             </children>
                         </HBox>
 
-                        <!-- Row 2: 🥈 CosmicBee -->
-                        <HBox spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                        <!-- Row 2 -->
+                        <HBox fx:id="row2" spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
                             <children>
-                                <Label styleClass="leaderboard-rank" text="🥈 2" />
-                                <Label styleClass="leaderboard-username" text="CosmicBee" HBox.hgrow="ALWAYS" />
-                                <Label styleClass="leaderboard-score" text="2,950" />
+                                <Label fx:id="rank2" styleClass="leaderboard-rank" text="🥈 2" />
+                                <Label fx:id="username2" styleClass="leaderboard-username" text="—" HBox.hgrow="ALWAYS" />
+                                <Label fx:id="score2" styleClass="leaderboard-score" text="0" />
                             </children>
                         </HBox>
 
-                        <!-- Row 3: 🥉 NovaBolt -->
-                        <HBox spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                        <!-- Row 3 -->
+                        <HBox fx:id="row3" spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
                             <children>
-                                <Label styleClass="leaderboard-rank" text="🥉 3" />
-                                <Label styleClass="leaderboard-username" text="NovaBolt" HBox.hgrow="ALWAYS" />
-                                <Label styleClass="leaderboard-score" text="2,100" />
+                                <Label fx:id="rank3" styleClass="leaderboard-rank" text="🥉 3" />
+                                <Label fx:id="username3" styleClass="leaderboard-username" text="—" HBox.hgrow="ALWAYS" />
+                                <Label fx:id="score3" styleClass="leaderboard-score" text="0" />
                             </children>
                         </HBox>
 
-                        <!-- Row 4: PixelFox -->
-                        <HBox spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                        <!-- Row 4 -->
+                        <HBox fx:id="row4" spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
                             <children>
-                                <Label styleClass="leaderboard-rank" text="4" />
-                                <Label styleClass="leaderboard-username" text="PixelFox" HBox.hgrow="ALWAYS" />
-                                <Label styleClass="leaderboard-score" text="1,800" />
+                                <Label fx:id="rank4" styleClass="leaderboard-rank" text="4" />
+                                <Label fx:id="username4" styleClass="leaderboard-username" text="—" HBox.hgrow="ALWAYS" />
+                                <Label fx:id="score4" styleClass="leaderboard-score" text="0" />
                             </children>
                         </HBox>
 
-                        <!-- Row 5: Player (Self) -->
-                        <HBox spacing="16.0" styleClass="leaderboard-row,leaderboard-row-self" style="-fx-padding: 12 16;">
+                        <!-- Self Row (always shown, highlighted) -->
+                        <HBox fx:id="selfRow" spacing="16.0" styleClass="leaderboard-row,leaderboard-row-self" style="-fx-padding: 12 16;">
                             <children>
-                                <Label styleClass="leaderboard-rank" text="5" />
+                                <Label fx:id="selfRank" styleClass="leaderboard-rank" text="—" />
                                 <Label fx:id="selfLeaderboardUsername" styleClass="leaderboard-username,leaderboard-username-self" text="[You]" HBox.hgrow="ALWAYS" />
-                                <Label fx:id="selfLeaderboardScore" styleClass="leaderboard-score" text="1,250" />
+                                <Label fx:id="selfLeaderboardScore" styleClass="leaderboard-score" text="0" />
                             </children>
                         </HBox>
                     </children>

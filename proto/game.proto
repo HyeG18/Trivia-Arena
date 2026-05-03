@@ -1,6 +1,9 @@
 syntax = "proto3";
 package arena.game;
 
+option java_package = "com.arenadepreguntas.grpc.game";
+option java_multiple_files = true;
+
 service GameService {
   // 1. STREAMING BIDIRECCIONAL: El bucle principal del juego [cite: 24, 33]
   rpc PlayStream (stream ClientMessage) returns (stream ServerMessage);

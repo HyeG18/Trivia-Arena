@@ -6,6 +6,7 @@ package com.arenadepreguntas.client;
  */
 public class SessionData {
     public static String username = "";
+    public static String userId = "";
     public static int currentScore = 0;
     public static int currentRank = 1;
 }

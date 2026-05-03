@@ -1,20 +1,38 @@
 package com.arenadepreguntas.client.controller;
 
+import com.arenadepreguntas.client.GrpcClientService;
+import com.arenadepreguntas.client.SessionData;
+import com.arenadepreguntas.grpc.game.QuestionPayload;
+
+import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
 import javafx.animation.ScaleTransition;
 import javafx.animation.Timeline;
 import javafx.animation.TranslateTransition;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Node;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 
-import com.arenadepreguntas.client.SessionData;
+import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
 
+/**
+ * Lobby controller handles login and waiting states before the arena begins.
+ * Manages authentication, emoji reactions, and scene transition to the game
+ * arena.
+ */
 public class LobbyController {
+
     @FXML
     private VBox entryContainer;
     @FXML
@@ -22,11 +40,15 @@ public class LobbyController {
     @FXML
     private TextField usernameField;
     @FXML
+    private PasswordField passwordField;
+    @FXML
     private Button playButton;
     @FXML
     private Label waitingLabel;
     @FXML
     private Label usernameDisplay;
+    @FXML
+    private Label errorLabel;
     @FXML
     private Button emojiBtn1;
     @FXML
@@ -40,105 +62,170 @@ public class LobbyController {
 
     private Timeline pulseTimeline;
 
-    /**
-     * Initialize: set up pulse animation for waiting state.
-     */
     @FXML
     public void initialize() {
-        // Pulse animation for the waiting label
         pulseTimeline = new Timeline();
         pulseTimeline.setCycleCount(Timeline.INDEFINITE);
     }
 
-    /**
-     * Handle PLAY button click.
-     * Validates username, shows shake if empty, otherwise transitions to waiting
-     * state.
-     */
+    // ========================================================================
+    // Entry state — JOIN ARENA
+    // ========================================================================
+
     @FXML
     private void handlePlayClicked(ActionEvent event) {
-        // gRPC-safe: wrapping for future streaming thread compatibility
-        Platform.runLater(() -> {
-            String username = usernameField.getText().trim();
+        String username = usernameField.getText().trim();
+        String password = passwordField.getText().trim();
 
-            if (username.isEmpty()) {
-                // Shake animation on the username field
-                TranslateTransition shake = new TranslateTransition(Duration.millis(50), usernameField);
-                shake.setCycleCount(4);
-                shake.setAutoReverse(true);
-                shake.setByX(8);
-                shake.play();
-                return;
-            }
+        if (username.isEmpty()) {
+            shake(usernameField);
+            return;
+        }
+        if (password.isEmpty()) {
+            shake(passwordField);
+            return;
+        }
 
-            // Store username in SessionData
-            SessionData.username = username;
+        hideError();
+        playButton.setDisable(true);
+        playButton.setText("Connecting...");
 
-            // Transition to waiting state
-            entryContainer.setVisible(false);
-            entryContainer.setManaged(false);
-            waitingContainer.setVisible(true);
-            waitingContainer.setManaged(true);
+        // JoinArena uses a blocking stub — must not run on the JavaFX thread.
+        CompletableFuture
+                .supplyAsync(() -> GrpcClientService.getInstance().joinArena(username, password))
+                .whenCompleteAsync((response, ex) -> {
+                    if (ex != null) {
+                        showError("Could not reach the server. Check your connection.");
+                        resetPlayButton();
+                        return;
+                    }
 
-            // Update waiting label with username
-            usernameDisplay.setText("Playing as: " + username);
+                    if (!response.getSuccess()) {
+                        showError(response.getMessage().isEmpty()
+                                ? "Login failed. Try a different username or password."
+                                : response.getMessage());
+                        resetPlayButton();
+                        return;
+                    }
 
-            // Start pulse animation
-            startPulseAnimation();
-        });
+                    // Credentials accepted — store session and move to waiting state.
+                    SessionData.username = username;
+                    SessionData.userId = response.getUserId();
+
+                    entryContainer.setVisible(false);
+                    entryContainer.setManaged(false);
+                    waitingContainer.setVisible(true);
+                    waitingContainer.setManaged(true);
+                    usernameDisplay.setText("Playing as: " + username);
+                    startPulseAnimation();
+
+                    // Open the bidirectional game stream. The lobby handler's sole job is to
+                    // catch the first NewQuestion event and transition the scene. It blanks itself
+                    // before calling Platform.runLater to prevent a second trigger if two messages
+                    // happen to arrive in rapid succession.
+                    GrpcClientService.getInstance().startGameStream(msg -> {
+                        if (msg.hasNewQuestion()) {
+                            GrpcClientService.getInstance().setMessageHandler(ignored -> {
+                            });
+                            Platform.runLater(() -> switchToArena(msg.getNewQuestion()));
+                        }
+                    });
+
+                }, Platform::runLater)
+                .exceptionally(ex -> {
+                    Platform.runLater(() -> {
+                        showError("Unexpected error. Please try again.");
+                        resetPlayButton();
+                    });
+                    return null;
+                });
     }
 
-    /**
-     * Handle emoji button click with scale animation.
-     */
+    // ========================================================================
+    // Waiting state — EMOJI REACTIONS (fire-and-forget async RPC)
+    // ========================================================================
+
     @FXML
     private void handleEmojiClicked(ActionEvent event) {
-        // gRPC-safe: wrapping for future streaming thread compatibility
-        Platform.runLater(() -> {
-            Button clickedButton = (Button) event.getSource();
-            String emoji = (String) clickedButton.getUserData();
+        Button clicked = (Button) event.getSource();
+        String emoji = (String) clicked.getUserData();
 
-            // Scale animation
-            ScaleTransition scaleUp = new ScaleTransition(Duration.millis(75), clickedButton);
-            scaleUp.setToX(1.3);
-            scaleUp.setToY(1.3);
+        ScaleTransition up = new ScaleTransition(Duration.millis(75), clicked);
+        up.setToX(1.3);
+        up.setToY(1.3);
+        ScaleTransition down = new ScaleTransition(Duration.millis(75), clicked);
+        down.setToX(1.0);
+        down.setToY(1.0);
+        up.setOnFinished(e -> down.play());
+        up.play();
 
-            ScaleTransition scaleDown = new ScaleTransition(Duration.millis(75), clickedButton);
-            scaleDown.setToX(1.0);
-            scaleDown.setToY(1.0);
-
-            scaleUp.setOnFinished(e -> scaleDown.play());
-            scaleUp.play();
-
-            System.out.println("Reaction sent: " + emoji);
-        });
+        GrpcClientService.getInstance().sendEmoji(emoji);
     }
 
-    /**
-     * Start the pulsing animation on the waiting label.
-     */
+    // ========================================================================
+    // Scene transition
+    // ========================================================================
+
+    private void switchToArena(QuestionPayload firstQuestion) {
+        try {
+            FXMLLoader loader = new FXMLLoader(
+                    getClass().getResource("/com/arenadepreguntas/client/fxml/arena.fxml"));
+
+            // loader.load() synchronously calls ArenaController.initialize(), which
+            // immediately registers itself as the message handler — so any subsequent
+            // stream events go straight to the arena controller.
+            Parent arenaRoot = loader.load();
+
+            ArenaController arenaController = loader.getController();
+            arenaController.displayFirstQuestion(firstQuestion);
+
+            Scene scene = waitingContainer.getScene();
+            scene.setRoot(arenaRoot);
+        } catch (IOException e) {
+            e.printStackTrace();
+            showError("Failed to load game screen.");
+        }
+    }
+
+    // ========================================================================
+    // Helpers
+    // ========================================================================
+
     private void startPulseAnimation() {
-        // gRPC-safe: wrapping for future streaming thread compatibility
-        Platform.runLater(() -> {
-            pulseTimeline.getKeyFrames().clear();
+        pulseTimeline.getKeyFrames().clear();
+        Duration half = Duration.millis(400);
+        Duration full = Duration.millis(800);
+        pulseTimeline.getKeyFrames().addAll(
+                new KeyFrame(Duration.ZERO,
+                        new KeyValue(waitingLabel.opacityProperty(), 1.0)),
+                new KeyFrame(half,
+                        new KeyValue(waitingLabel.opacityProperty(), 0.5)),
+                new KeyFrame(full,
+                        new KeyValue(waitingLabel.opacityProperty(), 1.0)));
+        pulseTimeline.play();
+    }
 
-            // Toggle opacity: 1.0 to 0.5 to 1.0
-            Duration half = Duration.millis(400);
-            Duration full = Duration.millis(800);
+    private void shake(Node node) {
+        TranslateTransition shake = new TranslateTransition(Duration.millis(50), node);
+        shake.setCycleCount(4);
+        shake.setAutoReverse(true);
+        shake.setByX(8);
+        shake.play();
+    }
 
-            javafx.animation.KeyValue kv1 = new javafx.animation.KeyValue(
-                    waitingLabel.opacityProperty(), 1.0);
-            javafx.animation.KeyValue kv2 = new javafx.animation.KeyValue(
-                    waitingLabel.opacityProperty(), 0.5);
-            javafx.animation.KeyValue kv3 = new javafx.animation.KeyValue(
-                    waitingLabel.opacityProperty(), 1.0);
+    private void showError(String message) {
+        errorLabel.setText(message);
+        errorLabel.setVisible(true);
+        errorLabel.setManaged(true);
+    }
 
-            javafx.animation.KeyFrame kf1 = new javafx.animation.KeyFrame(Duration.ZERO, kv1);
-            javafx.animation.KeyFrame kf2 = new javafx.animation.KeyFrame(half, kv2);
-            javafx.animation.KeyFrame kf3 = new javafx.animation.KeyFrame(full, kv3);
+    private void hideError() {
+        errorLabel.setVisible(false);
+        errorLabel.setManaged(false);
+    }
 
-            pulseTimeline.getKeyFrames().addAll(kf1, kf2, kf3);
-            pulseTimeline.play();
-        });
+    private void resetPlayButton() {
+        playButton.setDisable(false);
+        playButton.setText("⚡ PLAY!");
     }
 }

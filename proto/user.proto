@@ -1,6 +1,9 @@
 syntax = "proto3";
 package arena.user;
 
+option java_package = "com.arenadepreguntas.grpc.user";
+option java_multiple_files = true;
+
 service UserService {
   // Llamada síncrona (Unary) para el Onboarding (Registro/Login)
   rpc JoinArena (JoinRequest) returns (JoinResponse);

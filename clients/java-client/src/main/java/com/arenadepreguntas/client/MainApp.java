@@ -42,6 +42,7 @@ public class MainApp extends Application {
             // Icon not found, continue without it
         }
 
+        primaryStage.setOnCloseRequest(event -> GrpcClientService.shutdownIfInitialized());
         primaryStage.show();
     }
 
