@@ -13,66 +13,72 @@
 <StackPane fx:id="leaderboardOverlay" managed="false" visible="false" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.arenadepreguntas.client.controller.LeaderboardController">
     <children>
         <!-- Scrim (Semi-transparent dark background) -->
-        <Rectangle fill="rgba(0,0,0,0.55)" height="1080.0" width="1920.0" />
+        <Rectangle fill="rgba(0,0,0,0.65)" height="1080.0" width="1920.0" />
 
         <!-- Leaderboard Card (slides up from bottom) -->
-        <VBox fx:id="leaderboardCard" alignment="TOP_CENTER" spacing="16.0" style="-fx-padding: 24; -fx-max-width: 85%; -fx-alignment: top-center;" styleClass="card-leaderboard-surface" StackPane.alignment="BOTTOM_CENTER">
+        <VBox fx:id="leaderboardCard" alignment="TOP_CENTER" spacing="0" style="-fx-padding: 0; -fx-max-width: 90%; -fx-alignment: top-center;" styleClass="card-leaderboard-surface" StackPane.alignment="BOTTOM_CENTER">
             <children>
-                <!-- Header -->
-                <Label styleClass="heading-large" text="🏆 Leaderboard" />
+                <!-- Header with Title -->
+                <HBox alignment="CENTER_LEFT" spacing="16" style="-fx-padding: 20 24 16 24; -fx-border-color: rgba(255,255,255,0.1); -fx-border-width: 0 0 1 0;">
+                    <Label styleClass="heading-large" text="🏆 Leaderboard" />
+                    <Region HBox.hgrow="ALWAYS" />
+                </HBox>
 
-                <!-- Leaderboard Rows Container — all labels have fx:id so the controller can populate from gRPC data -->
-                <VBox fx:id="leaderboardRows" spacing="0.0" style="-fx-padding: 12 0 24 0;">
+                <!-- Leaderboard Rows Container -->
+                <VBox fx:id="leaderboardRows" spacing="1" style="-fx-padding: 0;" VBox.vgrow="ALWAYS">
                     <children>
                         <!-- Row 1 -->
-                        <HBox fx:id="row1" spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                        <HBox fx:id="row1" spacing="0" styleClass="leaderboard-row" style="-fx-padding: 16 24; -fx-spacing: 16;">
                             <children>
-                                <Label fx:id="rank1" styleClass="leaderboard-rank" text="🥇 1" />
-                                <Label fx:id="username1" styleClass="leaderboard-username" text="—" HBox.hgrow="ALWAYS" />
-                                <Label fx:id="score1" styleClass="leaderboard-score" text="0" />
+                                <Label fx:id="rank1" styleClass="leaderboard-rank" text="🥇" style="-fx-font-size: 20; -fx-min-width: 40;" />
+                                <Label fx:id="username1" styleClass="leaderboard-username" text="Player 1" HBox.hgrow="ALWAYS" style="-fx-font-size: 14; -fx-padding: 4;" />
+                                <Label fx:id="score1" styleClass="leaderboard-score" text="0" style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #00D2FF; -fx-min-width: 100; -fx-text-alignment: right;" />
                             </children>
                         </HBox>
 
                         <!-- Row 2 -->
-                        <HBox fx:id="row2" spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                        <HBox fx:id="row2" spacing="0" styleClass="leaderboard-row" style="-fx-padding: 16 24; -fx-spacing: 16;">
                             <children>
-                                <Label fx:id="rank2" styleClass="leaderboard-rank" text="🥈 2" />
-                                <Label fx:id="username2" styleClass="leaderboard-username" text="—" HBox.hgrow="ALWAYS" />
-                                <Label fx:id="score2" styleClass="leaderboard-score" text="0" />
+                                <Label fx:id="rank2" styleClass="leaderboard-rank" text="🥈" style="-fx-font-size: 20; -fx-min-width: 40;" />
+                                <Label fx:id="username2" styleClass="leaderboard-username" text="Player 2" HBox.hgrow="ALWAYS" style="-fx-font-size: 14; -fx-padding: 4;" />
+                                <Label fx:id="score2" styleClass="leaderboard-score" text="0" style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #00D2FF; -fx-min-width: 100; -fx-text-alignment: right;" />
                             </children>
                         </HBox>
 
                         <!-- Row 3 -->
-                        <HBox fx:id="row3" spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                        <HBox fx:id="row3" spacing="0" styleClass="leaderboard-row" style="-fx-padding: 16 24; -fx-spacing: 16;">
                             <children>
-                                <Label fx:id="rank3" styleClass="leaderboard-rank" text="🥉 3" />
-                                <Label fx:id="username3" styleClass="leaderboard-username" text="—" HBox.hgrow="ALWAYS" />
-                                <Label fx:id="score3" styleClass="leaderboard-score" text="0" />
+                                <Label fx:id="rank3" styleClass="leaderboard-rank" text="🥉" style="-fx-font-size: 20; -fx-min-width: 40;" />
+                                <Label fx:id="username3" styleClass="leaderboard-username" text="Player 3" HBox.hgrow="ALWAYS" style="-fx-font-size: 14; -fx-padding: 4;" />
+                                <Label fx:id="score3" styleClass="leaderboard-score" text="0" style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #00D2FF; -fx-min-width: 100; -fx-text-alignment: right;" />
                             </children>
                         </HBox>
 
                         <!-- Row 4 -->
-                        <HBox fx:id="row4" spacing="16.0" styleClass="leaderboard-row" style="-fx-padding: 12 16;">
+                        <HBox fx:id="row4" spacing="0" styleClass="leaderboard-row" style="-fx-padding: 16 24; -fx-spacing: 16;">
                             <children>
-                                <Label fx:id="rank4" styleClass="leaderboard-rank" text="4" />
-                                <Label fx:id="username4" styleClass="leaderboard-username" text="—" HBox.hgrow="ALWAYS" />
-                                <Label fx:id="score4" styleClass="leaderboard-score" text="0" />
+                                <Label fx:id="rank4" styleClass="leaderboard-rank" text="4️⃣" style="-fx-font-size: 20; -fx-min-width: 40;" />
+                                <Label fx:id="username4" styleClass="leaderboard-username" text="Player 4" HBox.hgrow="ALWAYS" style="-fx-font-size: 14; -fx-padding: 4;" />
+                                <Label fx:id="score4" styleClass="leaderboard-score" text="0" style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #00D2FF; -fx-min-width: 100; -fx-text-alignment: right;" />
                             </children>
                         </HBox>
 
+                        <!-- Divider -->
+                        <Rectangle style="-fx-fill: rgba(255,255,255,0.1);" height="1" />
+
                         <!-- Self Row (always shown, highlighted) -->
-                        <HBox fx:id="selfRow" spacing="16.0" styleClass="leaderboard-row,leaderboard-row-self" style="-fx-padding: 12 16;">
+                        <HBox fx:id="selfRow" spacing="0" styleClass="leaderboard-row,leaderboard-row-self" style="-fx-padding: 16 24; -fx-spacing: 16;">
                             <children>
-                                <Label fx:id="selfRank" styleClass="leaderboard-rank" text="—" />
-                                <Label fx:id="selfLeaderboardUsername" styleClass="leaderboard-username,leaderboard-username-self" text="[You]" HBox.hgrow="ALWAYS" />
-                                <Label fx:id="selfLeaderboardScore" styleClass="leaderboard-score" text="0" />
+                                <Label fx:id="selfRank" styleClass="leaderboard-rank" text="—" style="-fx-font-size: 20; -fx-min-width: 40;" />
+                                <Label fx:id="selfLeaderboardUsername" styleClass="leaderboard-username,leaderboard-username-self" text="[You]" HBox.hgrow="ALWAYS" style="-fx-font-size: 14; -fx-font-weight: bold; -fx-padding: 4;" />
+                                <Label fx:id="selfLeaderboardScore" styleClass="leaderboard-score" text="0" style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #FFD700; -fx-min-width: 100; -fx-text-alignment: right;" />
                             </children>
                         </HBox>
                     </children>
                 </VBox>
 
                 <!-- Next Question Button -->
-                <Button fx:id="nextQuestionButton" minHeight="70.0" minWidth="1.0" onAction="#handleNextQuestion" prefWidth="Infinity" styleClass="btn-chunky,btn-next" text="NEXT QUESTION ➡" />
+                <Button fx:id="nextQuestionButton" minHeight="60.0" onAction="#handleNextQuestion" prefWidth="Infinity" styleClass="btn-chunky,btn-next" style="-fx-padding: 16 24; -fx-margin: 0; -fx-font-size: 14; -fx-font-weight: bold;" text="➡ NEXT QUESTION" />
             </children>
         </VBox>
     </children>

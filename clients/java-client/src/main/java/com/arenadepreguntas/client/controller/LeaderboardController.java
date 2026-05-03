@@ -111,7 +111,7 @@ public class LeaderboardController {
         for (int i = 0; i < 4; i++) {
             if (i < top.size()) {
                 PlayerScore p = top.get(i);
-                rankLabels[i].setText(rankText(i + 1));
+                rankLabels[i].setText(rankText(p.getRank()));  // Use actual rank from player, not index
                 userLabels[i].setText(p.getUsername());
                 scoreLabels[i].setText(String.format("%,d", p.getScore()));
                 rowBoxes[i].setVisible(true);
@@ -123,10 +123,12 @@ public class LeaderboardController {
         }
 
         // Self row is always shown at the bottom.
-        PlayerScore self = update.getCurrentPlayer();
-        selfRank.setText(rankText(self.getRank()));
-        selfLeaderboardUsername.setText(SessionData.username);
-        selfLeaderboardScore.setText(String.format("%,d", self.getScore()));
+        if (update.hasCurrentPlayer()) {
+            PlayerScore self = update.getCurrentPlayer();
+            selfRank.setText(rankText(self.getRank()));
+            selfLeaderboardUsername.setText(SessionData.username);
+            selfLeaderboardScore.setText(String.format("%,d", self.getScore()));
+        }
     }
 
     // ========================================================================
