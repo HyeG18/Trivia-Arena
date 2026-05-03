@@ -16,5 +16,10 @@ dotenvy = "0.15"
 # Utilidades
 uuid = { version = "1.7", features = ["v4"] }
 
+# Añadimos Redis para la Saga
+redis = { version = "0.24", features = ["tokio-comp"] }
+
+bcrypt = "0.15"
+
 [build-dependencies]
 tonic-build = "0.11"
