@@ -3,8 +3,10 @@ use dotenvy::dotenv;
 use std::env;
 use sqlx::postgres::PgPool;
 use uuid::Uuid;
+use redis::AsyncCommands;
+// NUEVO: Importamos las funciones para encriptar y verificar contraseñas
+use bcrypt::{hash, verify, DEFAULT_COST};
 
-// Importamos el código generado por tonic basado en tu user.proto
 pub mod user {
     tonic::include_proto!("arena.user");
 }
@@ -14,8 +16,8 @@ use user::{JoinRequest, JoinResponse};
 
 #[derive(Debug)]
 pub struct MyAuthServer {
-    // ESTE SERVICIO SOLO SE CONECTA A POSTGRESQL (Database per Service)
     pg_pool: PgPool,
+    redis_client: redis::Client,
 }
 
 #[tonic::async_trait]
@@ -26,38 +28,109 @@ impl UserService for MyAuthServer {
     ) -> Result<Response<JoinResponse>, Status> {
         let req = request.into_inner();
         let username = req.username;
+        let password = req.password; // Obtenemos la contraseña del nuevo .proto
 
-        println!("📩 Recibida petición de ingreso para el usuario: {}", username);
+        println!("📩 Petición de acceso para: {}", username);
 
-        // 1. Generamos un ID único universal (UUID) para la sesión del jugador
-        let user_id = Uuid::new_v4().to_string();
-
-        // 2. Insertamos el usuario en PostgreSQL usando .bind() (Evaluación en tiempo de ejecución)
-        let result = sqlx::query(
-            "INSERT INTO users (id, username, score) VALUES ($1, $2, 0)"
+        // ====================================================
+        // FASE 1: ¿EXISTE EL USUARIO? (PostgreSQL)
+        // ====================================================
+        // Consultamos si el usuario ya existe para obtener su ID y Hash
+        let existing_user: Option<(String, String)> = sqlx::query_as(
+            "SELECT id, password_hash FROM users WHERE username = $1"
         )
-        .bind(&user_id)
         .bind(&username)
-        .execute(&self.pg_pool)
-        .await;
+        .fetch_optional(&self.pg_pool)
+        .await
+        .map_err(|_| Status::internal("Error al consultar la base de datos"))?;
 
-        match result {
+        let user_id = if let Some((db_id, db_hash)) = existing_user {
+            // ➡️ FLUJO: LOGIN (El usuario ya existe)
+            println!("🔍 Usuario encontrado. Verificando contraseña...");
+            
+            let is_valid = verify(&password, &db_hash).unwrap_or(false);
+            
+            if !is_valid {
+                println!("❌ Contraseña incorrecta para: {}", username);
+                return Ok(Response::new(JoinResponse {
+                    success: false,
+                    user_id: "".to_string(),
+                    message: "Contraseña incorrecta.".to_string(),
+                }));
+            }
+            
+            println!("✅ Login exitoso. Re-creando sesión para: {}", username);
+            db_id // Usamos el ID que ya tenía en la base de datos
+            
+        } else {
+            // ➡️ FLUJO: REGISTRO (El usuario no existe)
+            println!("🆕 Usuario nuevo detectado. Iniciando SAGA de registro...");
+            
+            let new_id = Uuid::new_v4().to_string();
+            // Encriptamos la contraseña antes de guardarla
+            let hashed_pw = hash(&password, DEFAULT_COST).unwrap();
+
+            // PASO 1 DE LA SAGA: Postgres
+            let pg_result = sqlx::query(
+                "INSERT INTO users (id, username, password_hash, score) VALUES ($1, $2, $3, 0)"
+            )
+            .bind(&new_id)
+            .bind(&username)
+            .bind(&hashed_pw)
+            .execute(&self.pg_pool)
+            .await;
+
+            if let Err(e) = pg_result {
+                eprintln!("❌ Error en Postgres: {}", e);
+                return Err(Status::internal("Error al registrar el nuevo usuario"));
+            }
+            println!("✅ Paso 1: Usuario guardado en Postgres con ID: {}", new_id);
+            
+            new_id // Usamos el nuevo ID generado
+        };
+
+        // ====================================================
+        // FASE 2: RENOVACIÓN/CREACIÓN DE SESIÓN (Redis)
+        // ====================================================
+        let mut redis_conn = match self.redis_client.get_async_connection().await {
+            Ok(conn) => conn,
+            Err(_) => {
+                // Si es un registro nuevo y Redis falla, hacemos Rollback. 
+                // Si era login, simplemente falla la conexión pero no borramos el usuario.
+                println!("⚠️ Redis no disponible.");
+                let _ = sqlx::query("DELETE FROM users WHERE id = $1 AND score = 0")
+                    .bind(&user_id)
+                    .execute(&self.pg_pool)
+                    .await;
+                return Err(Status::unavailable("Servicio de sesiones no disponible."));
+            }
+        };
+
+        // Guardamos o actualizamos la sesión (expira en 2 horas)
+        let redis_key = format!("session:{}", user_id);
+        let redis_res: redis::RedisResult<()> = redis_conn.set_ex(&redis_key, &username, 7200).await;
+
+        match redis_res {
             Ok(_) => {
-                println!("✅ Jugador registrado en PostgreSQL con ID: {}", user_id);
-                // 3. Devolvemos la respuesta exitosa al cliente Java
+                println!("✅ Sesión guardada en Redis. ¡Acceso concedido a {}!", username);
                 Ok(Response::new(JoinResponse {
                     success: true,
-                    user_id,
-                    message: "Esperando al moderador...".to_string(),
+                    user_id, // Devolvemos el ID (ya sea el antiguo o el nuevo)
+                    message: "Acceso concedido. Esperando al moderador...".to_string(),
                 }))
             }
             Err(e) => {
-                eprintln!("❌ Error al guardar en base de datos: {}", e);
-                // Si falla la BD, le avisamos al cliente
+                eprintln!("❌ Error en Redis: {}", e);
+                // Compensación en caso de fallo
+                let _ = sqlx::query("DELETE FROM users WHERE id = $1 AND score = 0")
+                    .bind(&user_id)
+                    .execute(&self.pg_pool)
+                    .await;
+                
                 Ok(Response::new(JoinResponse {
                     success: false,
                     user_id: "".to_string(),
-                    message: "Error interno del servidor. Intenta de nuevo.".to_string(),
+                    message: "Error interno al iniciar sesión.".to_string(),
                 }))
             }
         }
@@ -66,22 +139,26 @@ impl UserService for MyAuthServer {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Cargamos las variables de entorno (buscando el .env dos niveles arriba)
     dotenv().ok();
 
-    println!("Iniciando Auth-Service...");
+    println!("🏛️ Iniciando Auth-Service (Login/Registro + Saga)...");
 
-    // 2. Conectamos a PostgreSQL
     let pg_url = env::var("DATABASE_URL").expect("Falta DATABASE_URL en .env");
     let pg_pool = PgPool::connect(&pg_url).await?;
     println!("✅ Conectado a PostgreSQL");
 
-    // 3. MIGRACIÓN AUTOMÁTICA: Creamos la tabla 'users' si no existe
+    let redis_url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let redis_client = redis::Client::open(redis_url)?;
+    println!("✅ Cliente Redis inicializado");
+
+    // 🚀 MIGRACIÓN AUTOMÁTICA ACTUALIZADA
+    // Ahora incluye password_hash y garantiza que username sea único (UNIQUE)
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS users (
             id VARCHAR(50) PRIMARY KEY,
-            username VARCHAR(50) NOT NULL,
+            username VARCHAR(50) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
             score INT DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -89,14 +166,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .execute(&pg_pool)
     .await?;
-    println!("✅ Tabla 'users' verificada en la base de datos.");
+    println!("✅ Tabla 'users' verificada con esquema de seguridad.");
 
-    // 4. INICIAMOS EL SERVIDOR gRPC EN EL PUERTO 50052
-    // Nota: El Game-Engine usa el 50051, este debe usar otro puerto libre
     let addr = "0.0.0.0:50052".parse().unwrap();
-    let auth_server = MyAuthServer { pg_pool };
+    let auth_server = MyAuthServer { 
+        pg_pool, 
+        redis_client 
+    };
 
-    println!("🚀 Auth-Service escuchando peticiones en: {}", addr);
+    println!("🚀 Auth-Service escuchando en: {}", addr);
 
     Server::builder()
         .add_service(UserServiceServer::new(auth_server))
