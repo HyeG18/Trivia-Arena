@@ -70,8 +70,9 @@ impl GameService for Gateway {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let auth_channel = Channel::from_static("http://127.0.0.1:50052").connect_lazy();
-    let game_channel = Channel::from_static("http://127.0.0.1:50051").connect_lazy();
+    // CAMBIO AQUI: Usamos los nombres de los contenedores de Docker
+    let auth_channel = Channel::from_static("http://auth-service:50052").connect_lazy();
+    let game_channel = Channel::from_static("http://game-engine:50051").connect_lazy();
 
     let gateway = Gateway {
         auth_client_channel: auth_channel.clone(),
