@@ -4,3 +4,25 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# Dependencias normales (las que usa tu código principal)
+tonic = "0.11"
+tokio = { version = "1.37", features = ["full"] } # "full" activa todas las funciones de red y multihilo
+prost = "0.12" # La librería que maneja los datos de Protocol Buffers
+tokio-stream = { version = "0.1", features = ["net"] } # Necesario para el streaming bidireccional
+
+# 1. Driver para PostgreSQL (sqlx)
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio-rustls"] }
+
+# 2. Driver para MongoDB
+mongodb = "2.8"
+
+# 3. Driver para Redis
+redis = { version = "0.25", features = ["tokio-comp"] }
+
+# 4. Herramientas útiles para variables de entorno y serialización de datos
+dotenvy = "0.15" # Para leer el archivo .env
+serde = { version = "1.0", features = ["derive"] } # Para convertir structs a JSON (Mongo)
+
+# Dependencias de construcción (las que se usan ANTES de compilar tu código)
+[build-dependencies]
+tonic-build = "0.11"

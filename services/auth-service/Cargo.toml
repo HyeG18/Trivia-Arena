@@ -1,6 +1,25 @@
 [package]
 name = "auth-service"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+tonic = "0.11"
+prost = "0.12"
+tokio = { version = "1.36", features = ["macros", "rt-multi-thread"] }
+tokio-stream = "0.1"
+
+# Base de datos (PostgreSQL)
+sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "postgres", "uuid", "chrono"] }
+dotenvy = "0.15"
+
+# Utilidades
+uuid = { version = "1.7", features = ["v4"] }
+
+# Añadimos Redis para la Saga
+redis = { version = "0.24", features = ["tokio-comp"] }
+
+bcrypt = "0.15"
+
+[build-dependencies]
+tonic-build = "0.11"

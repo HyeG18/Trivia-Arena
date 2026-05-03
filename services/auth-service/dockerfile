@@ -1,0 +1,25 @@
+# ETAPA 1: Constructor (Instala Rust y compila el código)
+FROM rust:slim AS builder
+WORKDIR /app
+
+# Instalamos el compilador de Protobuf (protoc) y dependencias de red necesarias para compilar
+RUN apt-get update && apt-get install -y protobuf-compiler libprotobuf-dev pkg-config libssl-dev
+
+# Copiamos todo el proyecto (gracias al context: . del docker-compose)
+COPY . .
+
+# Compilamos SOLO el servicio de autenticación en modo optimizado (release)
+RUN cargo build --release -p auth-service
+
+# ETAPA 2: Imagen Final (Súper ligera, solo con lo necesario para correr el ejecutable)
+FROM debian:bookworm-slim
+WORKDIR /app
+
+# Instalamos certificados de seguridad necesarios para conectarse a las bases de datos
+RUN apt-get update && apt-get install -y ca-certificates libssl-dev && rm -rf /var/lib/apt/lists/*
+
+# Copiamos el ejecutable compilado de la etapa 1
+COPY --from=builder /app/target/release/auth-service /usr/local/bin/
+
+# Comando para ejecutar el servicio
+CMD ["auth-service"]

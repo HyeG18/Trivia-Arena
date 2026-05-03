@@ -1,0 +1,22 @@
+# ETAPA 1: Constructor
+FROM rust:slim AS builder
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y protobuf-compiler libprotobuf-dev pkg-config libssl-dev
+
+COPY . .
+
+# Compilamos SOLO el motor del juego
+RUN cargo build --release -p game-engine
+
+# ETAPA 2: Imagen Final
+FROM debian:bookworm-slim
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y ca-certificates libssl-dev && rm -rf /var/lib/apt/lists/*
+
+# Copiamos el ejecutable compilado
+COPY --from=builder /app/target/release/game-engine /usr/local/bin/
+
+# Comando para ejecutar el servicio
+CMD ["game-engine"]
