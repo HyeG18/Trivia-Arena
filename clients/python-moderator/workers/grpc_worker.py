@@ -15,12 +15,14 @@ class GrpcStreamWorker(QThread):
       leaderboard_updated(players: list[dict], total_responses: int)
       players_connected_changed(count: int)
       question_launched(text: str, options: list[str], time_limit: int)
+      emoji_received(username: str, emoji_code: str)
       error_occurred(message: str)
     """
 
     leaderboard_updated = pyqtSignal(list, int)
     players_connected_changed = pyqtSignal(int)
     question_launched = pyqtSignal(str, list, int)
+    emoji_received = pyqtSignal(str, str)
     error_occurred = pyqtSignal(str)
 
     def __init__(self, parent=None):
@@ -65,6 +67,10 @@ class GrpcStreamWorker(QThread):
                 elif msg.HasField("new_question"):
                     q = msg.new_question
                     self.question_launched.emit(q.text, list(q.options), q.time_limit_sec)
+
+                elif msg.HasField("emoji"):
+                    e = msg.emoji
+                    self.emoji_received.emit(e.username, e.emoji_code)
 
         except Exception as exc:
             if not self._stop_event.is_set():

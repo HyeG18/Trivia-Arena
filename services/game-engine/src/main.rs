@@ -2,24 +2,23 @@ use tonic::{transport::Server, Request, Response, Status, Streaming};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 
-// IMPORTACIONES PARA LAS BASES DE DATOS
 use dotenvy::dotenv;
 use std::env;
 use sqlx::postgres::PgPool;
 use mongodb::Client as MongoClient;
 use redis::Client as RedisClient;
-use serde::{Deserialize, Serialize}; 
-use redis::AsyncCommands; 
+use serde::{Deserialize, Serialize};
+use redis::AsyncCommands;
 
 pub mod game {
-    tonic::include_proto!("arena.game"); 
+    tonic::include_proto!("arena.game");
 }
 
 use game::game_service_server::{GameService, GameServiceServer};
 use game::{
-    ClientMessage, ServerMessage, QuestionPayload, ModeratorAck, 
+    ClientMessage, ServerMessage, QuestionPayload, ModeratorAck,
     EmojiRequest, EmojiAck, ForceEndRequest
-}; 
+};
 
 // ==========================================
 // PATRÓN STRATEGY: Lógica de Puntuación
@@ -28,12 +27,11 @@ pub trait ScoringStrategy: Send + Sync {
     fn calculate_score(&self, response_time_ms: i32, time_limit_ms: i32) -> i32;
 }
 
-// Estrategia 1: Puntuación Dinámica (Basada en la velocidad)
 pub struct DynamicScoring;
 impl ScoringStrategy for DynamicScoring {
     fn calculate_score(&self, response_time_ms: i32, time_limit_ms: i32) -> i32 {
         if response_time_ms >= time_limit_ms {
-            return 300; 
+            return 300;
         }
         let time_left = time_limit_ms - response_time_ms;
         let calc = (1500.0 * (time_left as f64 / time_limit_ms as f64)) as i32;
@@ -41,22 +39,21 @@ impl ScoringStrategy for DynamicScoring {
     }
 }
 
-// Estrategia 2: Puntuación Fija (Clásica)
 pub struct FixedScoring;
 impl ScoringStrategy for FixedScoring {
     fn calculate_score(&self, _response_time_ms: i32, _time_limit_ms: i32) -> i32 {
-        1000 
+        1000
     }
 }
 
 // ==========================================
-// 1. MODELO DE DATOS MONGODB
+// MODELO DE DATOS MONGODB
 // ==========================================
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MongoQuestion {
     pub text: String,
     pub options: Vec<String>,
-    pub correct_option_index: i32, 
+    pub correct_option_index: i32,
     pub time_limit_sec: i32,
 }
 
@@ -65,7 +62,7 @@ pub struct MyGameServer {
     tx_to_clients: broadcast::Sender<ServerMessage>,
     #[allow(dead_code)]
     pg_pool: PgPool,
-    mongo_client: MongoClient, 
+    mongo_client: MongoClient,
     redis_client: RedisClient,
 }
 
@@ -83,22 +80,36 @@ impl GameService for MyGameServer {
 
         let redis_client = self.redis_client.clone();
         let tx_global = self.tx_to_clients.clone();
-        let mongo_client = self.mongo_client.clone();
 
-        // NUEVO: Enviar pregunta actual al cliente que se acaba de conectar
-        let redis_for_current = redis_client.clone();
-        let tx_for_current = tx.clone();
+        // Send current question to newly connected client (catch-up for late joiners)
+        let redis_for_catchup = redis_client.clone();
+        let tx_for_catchup = tx.clone();
         tokio::spawn(async move {
-            if let Ok(mut conn) = redis_for_current.get_async_connection().await {
-                // Obtener pregunta actual de Redis (almacenada como hash)
-                let question_data: Result<(String, i32), _> = redis::cmd("HGETALL")
+            if let Ok(mut conn) = redis_for_catchup.get_async_connection().await {
+                // Use HGET for individual fields — HGETALL type mismatch with redis-rs
+                let text: Option<String> = redis::cmd("HGET")
                     .arg("current_question")
+                    .arg("text")
                     .query_async(&mut conn)
-                    .await;
+                    .await
+                    .unwrap_or(None);
 
-                if let Ok((text, time_limit)) = question_data {
+                let time_limit: Option<i32> = redis::cmd("HGET")
+                    .arg("current_question")
+                    .arg("time_limit_sec")
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or(None);
+
+                let correct_index: Option<i32> = redis::cmd("HGET")
+                    .arg("current_question")
+                    .arg("correct_answer_index")
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or(None);
+
+                if let (Some(text), Some(time_limit_sec)) = (text, time_limit) {
                     if !text.is_empty() {
-                        // Obtener opciones como lista en Redis
                         let options: Vec<String> = redis::cmd("LRANGE")
                             .arg("current_question_options")
                             .arg(0)
@@ -111,12 +122,13 @@ impl GameService for MyGameServer {
                             let question = game::QuestionPayload {
                                 text,
                                 options,
-                                time_limit_sec: time_limit,
+                                time_limit_sec,
+                                correct_answer_index: correct_index.unwrap_or(0),
                             };
                             let msg = ServerMessage {
                                 event: Some(game::server_message::Event::NewQuestion(question))
                             };
-                            let _ = tx_for_current.send(Ok(msg)).await;
+                            let _ = tx_for_catchup.send(Ok(msg)).await;
                             println!("📨 Pregunta actual reenviada a nuevo cliente");
                         }
                     }
@@ -124,6 +136,7 @@ impl GameService for MyGameServer {
             }
         });
 
+        // Handle incoming answers from this client
         tokio::spawn(async move {
             let mut redis_conn = match redis_client.get_multiplexed_async_connection().await {
                 Ok(conn) => conn,
@@ -132,10 +145,10 @@ impl GameService for MyGameServer {
 
             while let Ok(Some(message)) = in_stream.message().await {
                 if let Some(game::client_message::Payload::Answer(player_response)) = message.payload {
-                    let user_id = player_response.user_id;
-                    let user_answer = player_response.answer;
+                    let user_id = player_response.user_id.clone();
+                    let user_answer = player_response.answer.clone();
 
-                    // 🛡️ 1. VALIDACIÓN DE SEGURIDAD Y OBTENCIÓN DEL USERNAME
+                    // 1. Validate session and get username
                     let session_key = format!("session:{}", user_id);
                     let username_opt: Option<String> = redis::cmd("GET")
                         .arg(&session_key)
@@ -146,26 +159,39 @@ impl GameService for MyGameServer {
                     let username = match username_opt {
                         Some(name) => name,
                         None => {
-                            println!("🚨 Bloqueado: Intento de respuesta de ID inválido o desconectado ({})", user_id);
+                            println!("🚨 Bloqueado: ID inválido o desconectado ({})", user_id);
                             continue;
                         }
                     };
 
-                    println!("🎮 Respuesta validada y recibida de {}: {}", username, user_answer);
+                    println!("🎮 Respuesta de {}: {}", username, user_answer);
 
-                    // ==========================================
-                    // 2. VALIDACIÓN CON PREGUNTA ACTUAL
-                    // ==========================================
+                    // 2. Get current question from Redis using HGET (not HGETALL)
+                    let q_text: Option<String> = redis::cmd("HGET")
+                        .arg("current_question")
+                        .arg("text")
+                        .query_async(&mut redis_conn)
+                        .await
+                        .unwrap_or(None);
+
+                    let q_time_limit: Option<i32> = redis::cmd("HGET")
+                        .arg("current_question")
+                        .arg("time_limit_sec")
+                        .query_async(&mut redis_conn)
+                        .await
+                        .unwrap_or(None);
+
+                    let q_correct_index: Option<i32> = redis::cmd("HGET")
+                        .arg("current_question")
+                        .arg("correct_answer_index")
+                        .query_async(&mut redis_conn)
+                        .await
+                        .unwrap_or(None);
+
                     let mut puntos_ganados = 0;
                     let mut es_correcta = false;
 
-                    // Obtener pregunta actual almacenada en Redis
-                    let question_data: Result<(String, i32), _> = redis::cmd("HGETALL")
-                        .arg("current_question")
-                        .query_async(&mut redis_conn)
-                        .await;
-
-                    if let Ok((text, time_limit_sec)) = question_data {
+                    if let (Some(text), Some(time_limit_sec)) = (q_text, q_time_limit) {
                         if !text.is_empty() {
                             let options: Vec<String> = redis::cmd("LRANGE")
                                 .arg("current_question_options")
@@ -175,91 +201,99 @@ impl GameService for MyGameServer {
                                 .await
                                 .unwrap_or_default();
 
-                            if !options.is_empty() && user_answer == options[0] {
-                                // Primera opción es la respuesta correcta
+                            let correct_idx = q_correct_index.unwrap_or(0) as usize;
+
+                            // Map answer letter to option index (A=0, B=1, C=2, D=3)
+                            let player_idx = match user_answer.trim() {
+                                "A" => 0usize,
+                                "B" => 1,
+                                "C" => 2,
+                                "D" => 3,
+                                _ => usize::MAX,
+                            };
+
+                            if player_idx == correct_idx && player_idx < options.len() {
                                 let time_limit_ms = time_limit_sec * 1000;
                                 let response_time = player_response.response_time_ms;
-
                                 let strategy: Box<dyn ScoringStrategy> = Box::new(DynamicScoring);
                                 puntos_ganados = strategy.calculate_score(response_time, time_limit_ms);
-
                                 es_correcta = true;
-                                println!("✅ ¡Acertó en {} ms! {} ganó {} pts", response_time, username, puntos_ganados);
+                                println!("✅ ¡Acertó ({})! {} ganó {} pts en {}ms",
+                                    options.get(correct_idx).map(|s| s.as_str()).unwrap_or("?"),
+                                    username, puntos_ganados, response_time);
                             } else {
-                                println!("❌ {} respondió incorrectamente.", username);
+                                println!("❌ {} respondió incorrectamente ({} → idx {}, correcto idx {})",
+                                    username, user_answer, player_idx, correct_idx);
                             }
                         }
+                    } else {
+                        println!("⚠️ No hay pregunta activa en Redis para validar respuesta de {}", username);
                     }
 
-                    // ==========================================
-                    // 3. GUARDAR EN REDIS Y OBTENER TOP 5
-                    // ==========================================
-                    let result: Result<(), redis::RedisError> = redis::cmd("ZINCRBY")
+                    // 3. Update Redis leaderboard (ZINCRBY with i32 is fine, scores stay int)
+                    let _: Result<(), redis::RedisError> = redis::cmd("ZINCRBY")
                         .arg("arena_leaderboard")
                         .arg(puntos_ganados)
                         .arg(&username)
                         .query_async(&mut redis_conn)
                         .await;
 
-                    if result.is_ok() {
-                        let top_5_result: Result<Vec<(String, i32)>, redis::RedisError> = redis::cmd("ZREVRANGE")
-                            .arg("arena_leaderboard").arg(0).arg(4).arg("WITHSCORES")
-                            .query_async(&mut redis_conn).await;
+                    // 4. Get top-5 — scores stored as float strings in Redis, parse as f64 then cast
+                    let top_5_result: Result<Vec<(String, f64)>, redis::RedisError> = redis::cmd("ZREVRANGE")
+                        .arg("arena_leaderboard").arg(0).arg(4).arg("WITHSCORES")
+                        .query_async(&mut redis_conn).await;
 
-                        // NOVO: Obtener el score total actual del jugador
-                        let current_player_score: i32 = redis::cmd("ZSCORE")
-                            .arg("arena_leaderboard")
-                            .arg(&username)
-                            .query_async::<_, Option<i32>>(&mut redis_conn)
-                            .await
-                            .unwrap_or(None)
-                            .unwrap_or(0);
+                    let current_score_f: f64 = redis::cmd("ZSCORE")
+                        .arg("arena_leaderboard")
+                        .arg(&username)
+                        .query_async::<_, Option<f64>>(&mut redis_conn)
+                        .await
+                        .unwrap_or(None)
+                        .unwrap_or(0.0);
 
-                        // Obtener el rank del jugador actual
-                        let current_player_rank: i32 = redis::cmd("ZREVRANK")
-                            .arg("arena_leaderboard")
-                            .arg(&username)
-                            .query_async::<_, Option<i32>>(&mut redis_conn)
-                            .await
-                            .unwrap_or(None)
-                            .map(|r| r + 1)
-                            .unwrap_or(0);
+                    let current_rank: i32 = redis::cmd("ZREVRANK")
+                        .arg("arena_leaderboard")
+                        .arg(&username)
+                        .query_async::<_, Option<i64>>(&mut redis_conn)
+                        .await
+                        .unwrap_or(None)
+                        .map(|r| (r + 1) as i32)
+                        .unwrap_or(1);
 
-                        if let Ok(top_5) = top_5_result {
-                            let mut top_players = Vec::new();
-
-                            for (index, (board_username, score)) in top_5.into_iter().enumerate() {
-                                top_players.push(game::PlayerScore {
-                                    username: board_username,
-                                    score,
-                                    rank: (index + 1) as i32,
-                                    last_answer_correct: true,
-                                });
-                            }
-
-                            // NOVO: Incluir el jugador actual en la respuesta con score total
-                            let leaderboard_update = game::LeaderboardUpdate {
-                                top_players,
-                                current_player: Some(game::PlayerScore {
-                                    username: username.clone(),
-                                    score: current_player_score,
-                                    rank: current_player_rank,
-                                    last_answer_correct: es_correcta,
-                                }),
-                                total_responses: 1,
-                            };
-
-                            let msg = ServerMessage {
-                                event: Some(game::server_message::Event::Leaderboard(leaderboard_update))
-                            };
-                            let _ = tx_global.send(msg);
-                            println!("📊 Leaderboard actualizado y enviado con score total: {}", current_player_score);
+                    if let Ok(top_5) = top_5_result {
+                        let mut top_players = Vec::new();
+                        for (index, (board_username, score)) in top_5.into_iter().enumerate() {
+                            top_players.push(game::PlayerScore {
+                                username: board_username,
+                                score: score as i32,
+                                rank: (index + 1) as i32,
+                                last_answer_correct: es_correcta,
+                            });
                         }
+
+                        let leaderboard_update = game::LeaderboardUpdate {
+                            top_players,
+                            current_player: Some(game::PlayerScore {
+                                username: username.clone(),
+                                score: current_score_f as i32,
+                                rank: current_rank,
+                                last_answer_correct: es_correcta,
+                            }),
+                            total_responses: 1,
+                        };
+
+                        let msg = ServerMessage {
+                            event: Some(game::server_message::Event::Leaderboard(leaderboard_update))
+                        };
+                        let _ = tx_global.send(msg);
+                        println!("📊 Leaderboard enviado — {} tiene {} pts (rank #{})",
+                            username, current_score_f as i32, current_rank);
                     }
                 }
             }
         });
 
+        // Forward broadcast messages to this client's channel
         tokio::spawn(async move {
             while let Ok(msg) = rx.recv().await {
                 if tx.send(Ok(msg)).await.is_err() { break; }
@@ -272,51 +306,62 @@ impl GameService for MyGameServer {
 
     async fn send_emoji(&self, request: Request<EmojiRequest>) -> Result<Response<EmojiAck>, Status> {
         let data = request.into_inner();
-        let user_id = data.user_id;
+        let user_id = data.user_id.clone();
+        let emoji_code = data.emoji_code.clone();
 
-        // 🛡️ VALIDACIÓN DE SEGURIDAD CON REDIS EN UNARY
         let mut redis_conn = match self.redis_client.get_async_connection().await {
             Ok(conn) => conn,
             Err(_) => return Err(Status::internal("Servicio de validación temporalmente inactivo")),
         };
 
         let session_key = format!("session:{}", user_id);
-        let session_exists: bool = redis_conn.exists(&session_key).await.unwrap_or(false);
+        let username_opt: Option<String> = redis_conn.get(&session_key).await.unwrap_or(None);
 
-        if !session_exists {
-            println!("🚨 Bloqueado: Intento de enviar emoji con ID inválido o expirado ({})", user_id);
-            return Err(Status::unauthenticated("Sesión de juego inválida o expirada."));
-        }
+        let username = match username_opt {
+            Some(name) => name,
+            None => {
+                println!("🚨 Emoji bloqueado: ID inválido ({})", user_id);
+                return Err(Status::unauthenticated("Sesión de juego inválida o expirada."));
+            }
+        };
 
-        println!("🚀 Emoji verificado y recibido del jugador [{}]: {}", user_id, data.emoji_code);
+        // Broadcast emoji to all connected clients
+        let emoji_event = game::EmojiEvent {
+            username: username.clone(),
+            emoji_code: emoji_code.clone(),
+        };
+        let msg = ServerMessage {
+            event: Some(game::server_message::Event::Emoji(emoji_event))
+        };
+        let _ = self.tx_to_clients.send(msg);
+
+        println!("😀 Emoji de {} broadcast a todos: {}", username, emoji_code);
         Ok(Response::new(EmojiAck { received: true }))
     }
 
-    // ==========================================
-    // LANZAR PREGUNTA DESDE EL MODERADOR
-    // ==========================================
     async fn launch_question(&self, request: Request<QuestionPayload>) -> Result<Response<ModeratorAck>, Status> {
         let question = request.into_inner();
 
-        println!("📚 Pregunta recibida del moderador: {}", question.text);
+        println!("📚 Pregunta recibida del moderador: {} (respuesta correcta: idx {})",
+            question.text, question.correct_answer_index);
 
-        // NUEVO: Guardar la pregunta en Redis para que nuevos clientes la reciban
         let mut redis_conn = match self.redis_client.get_async_connection().await {
             Ok(conn) => conn,
             Err(_) => return Err(Status::internal("Error al conectar con Redis")),
         };
 
-        // Guardar texto y tiempo límite de la pregunta
+        // Store question fields individually (not as a single HSET bulk — avoids HGETALL type issues)
         let _: redis::RedisResult<()> = redis::cmd("HSET")
             .arg("current_question")
             .arg("text")
             .arg(&question.text)
             .arg("time_limit_sec")
             .arg(question.time_limit_sec)
+            .arg("correct_answer_index")
+            .arg(question.correct_answer_index)
             .query_async(&mut redis_conn)
             .await;
 
-        // Limpiar opciones anteriores y guardar nuevas opciones como lista
         let _: redis::RedisResult<()> = redis::cmd("DEL")
             .arg("current_question_options")
             .query_async(&mut redis_conn)
@@ -330,16 +375,15 @@ impl GameService for MyGameServer {
                 .await;
         }
 
-        // Limpiar el leaderboard de la pregunta anterior para empezar fresco
+        // Clear round leaderboard for fresh start
         let _: redis::RedisResult<()> = redis::cmd("DEL")
             .arg("arena_leaderboard")
             .query_async(&mut redis_conn)
             .await;
 
-        println!("✅ Pregunta almacenada en Redis para nuevos clientes");
+        println!("✅ Pregunta almacenada en Redis");
         println!("🧹 Leaderboard limpiado para nueva ronda");
 
-        // Broadcast pregunta a todos los clientes conectados
         let msg = ServerMessage {
             event: Some(game::server_message::Event::NewQuestion(question))
         };
@@ -348,9 +392,6 @@ impl GameService for MyGameServer {
         Ok(Response::new(ModeratorAck { success: true }))
     }
 
-    // ==========================================
-    // NUEVO: GUARDADO PERMANENTE AL FINALIZAR
-    // ==========================================
     async fn force_end_timer(&self, _request: Request<ForceEndRequest>) -> Result<Response<ModeratorAck>, Status> {
         println!("🛑 Juego finalizado. Sincronizando puntos con la base de datos...");
 
@@ -359,50 +400,47 @@ impl GameService for MyGameServer {
             Err(_) => return Err(Status::internal("Error al conectar con Redis")),
         };
 
-        // 1. Obtenemos TODOS los jugadores y sus puntos de esta partida desde Redis
-        let leaderboard: Result<Vec<(String, i32)>, redis::RedisError> = redis::cmd("ZREVRANGE")
-            .arg("arena_leaderboard").arg(0).arg(-1).arg("WITHSCORES") 
+        let leaderboard: Result<Vec<(String, f64)>, redis::RedisError> = redis::cmd("ZREVRANGE")
+            .arg("arena_leaderboard").arg(0).arg(-1).arg("WITHSCORES")
             .query_async(&mut redis_conn).await;
 
         if let Ok(scores) = leaderboard {
-            // 2. Guardamos cada puntuación en Postgres usando el username
             for (player_username, puntos) in scores {
+                let puntos_i32 = puntos as i32;
                 let result = sqlx::query("UPDATE users SET score = score + $1 WHERE username = $2")
-                    .bind(puntos)
+                    .bind(puntos_i32)
                     .bind(&player_username)
                     .execute(&self.pg_pool)
                     .await;
-                    
+
                 match result {
-                    Ok(_) => println!("💾 Puntos guardados en DB para {}: +{}", player_username, puntos),
+                    Ok(_) => println!("💾 Puntos guardados para {}: +{}", player_username, puntos_i32),
                     Err(e) => eprintln!("❌ Error guardando puntos para {}: {}", player_username, e),
                 }
             }
         }
 
-        // 3. Limpiamos el tablero de Redis para que la próxima partida empiece en 0
         let _: redis::RedisResult<()> = redis::cmd("DEL")
             .arg("arena_leaderboard")
             .query_async(&mut redis_conn).await;
-            
-        println!("🧹 Tablero de la partida actual limpiado.");
 
+        println!("🧹 Tablero limpiado.");
         Ok(Response::new(ModeratorAck { success: true }))
     }
 }
 
 // ==========================================
-// FUNCIÓN PARA POBLAR LA BASE DE DATOS
+// SEED MONGODB
 // ==========================================
 async fn seed_mongodb_if_empty(client: &MongoClient) -> Result<(), Box<dyn std::error::Error>> {
     let db = client.database("arena_db");
     let collection = db.collection::<MongoQuestion>("questions");
 
     let count = collection.count_documents(None, None).await?;
-    
+
     if count == 0 {
-        println!("📦 MongoDB está vacío. Insertando pregunta del diseñador UI...");
-        
+        println!("📦 MongoDB está vacío. Insertando pregunta de prueba...");
+
         let test_question = MongoQuestion {
             text: "¿Cuál es el patrón de diseño que permite revertir transacciones en múltiples microservicios?".to_string(),
             options: vec![
@@ -411,16 +449,16 @@ async fn seed_mongodb_if_empty(client: &MongoClient) -> Result<(), Box<dyn std::
                 "Event Sourcing".to_string(),
                 "Circuit Breaker".to_string()
             ],
-            correct_option_index: 1, 
+            correct_option_index: 1, // Saga is correct
             time_limit_sec: 21,
         };
 
         collection.insert_one(test_question, None).await?;
-        println!("✅ Pregunta de prueba insertada exitosamente en MongoDB.");
+        println!("✅ Pregunta de prueba insertada en MongoDB.");
     } else {
         println!("📦 MongoDB ya contiene {} pregunta(s).", count);
     }
-    
+
     Ok(())
 }
 
@@ -443,17 +481,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let redis_client = redis::Client::open(redis_url)?;
     println!("✅ Conectado a Redis");
 
-    let addr = "0.0.0.0:50051".parse().unwrap(); 
+    let addr = "0.0.0.0:50051".parse().unwrap();
     let (tx, _) = broadcast::channel(100);
-    
-    let game_server = MyGameServer { 
+
+    let game_server = MyGameServer {
         tx_to_clients: tx,
         pg_pool,
         mongo_client,
         redis_client,
     };
 
-    println!("🚀 Servidor Arena escuchando en Wi-Fi / Local: {}", addr);
+    println!("🚀 Game Engine escuchando en {}", addr);
 
     Server::builder()
         .add_service(GameServiceServer::new(game_server))

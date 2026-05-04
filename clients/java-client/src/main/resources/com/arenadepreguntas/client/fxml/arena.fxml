@@ -130,5 +130,11 @@
         <!-- ══ LEADERBOARD OVERLAY (included FXML, slide-up card) ════════ -->
         <fx:include fx:id="leaderboardOverlay" source="leaderboard_overlay.fxml"/>
 
+        <!-- ══ EMOJI FLOAT LAYER — pointer events pass through ══════════ -->
+        <StackPane fx:id="emojiOverlay"
+                   mouseTransparent="true"
+                   maxWidth="Infinity" maxHeight="Infinity"
+                   style="-fx-background-color: transparent;"/>
+
     </children>
 </StackPane>

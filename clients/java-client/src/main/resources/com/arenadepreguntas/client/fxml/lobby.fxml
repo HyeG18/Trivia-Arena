@@ -58,4 +58,10 @@
             </HBox>
         </children>
     </VBox>
+
+    <!-- Emoji Float Layer (pointer-transparent, sits above all content) -->
+    <StackPane fx:id="emojiOverlay"
+               mouseTransparent="true"
+               maxWidth="Infinity" maxHeight="Infinity"
+               style="-fx-background-color: transparent;"/>
 </StackPane>

@@ -26,12 +26,17 @@ class ModeratorGrpcClient:
     # ------------------------------------------------------------------ #
 
     def launch_question(
-        self, text: str, options: list[str], time_limit_sec: int
+        self,
+        text: str,
+        options: list[str],
+        time_limit_sec: int,
+        correct_answer_index: int = 0,
     ) -> game_pb2.ModeratorAck:
         payload = game_pb2.QuestionPayload(
             text=text,
             options=options,
             time_limit_sec=time_limit_sec,
+            correct_answer_index=correct_answer_index,
         )
         return self._stub.LaunchQuestion(payload)
 

@@ -2,10 +2,13 @@ package com.arenadepreguntas.client.controller;
 
 import com.arenadepreguntas.client.GrpcClientService;
 import com.arenadepreguntas.client.SessionData;
+import com.arenadepreguntas.grpc.game.EmojiEvent;
 import com.arenadepreguntas.grpc.game.QuestionPayload;
 
+import javafx.animation.FadeTransition;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
+import javafx.animation.ParallelTransition;
 import javafx.animation.ScaleTransition;
 import javafx.animation.Timeline;
 import javafx.animation.TranslateTransition;
@@ -13,6 +16,7 @@ import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -20,45 +24,29 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * Lobby controller handles login and waiting states before the arena begins.
- * Manages authentication, emoji reactions, and scene transition to the game
- * arena.
- */
 public class LobbyController {
 
-    @FXML
-    private VBox entryContainer;
-    @FXML
-    private VBox waitingContainer;
-    @FXML
-    private TextField usernameField;
-    @FXML
-    private PasswordField passwordField;
-    @FXML
-    private Button playButton;
-    @FXML
-    private Label waitingLabel;
-    @FXML
-    private Label usernameDisplay;
-    @FXML
-    private Label errorLabel;
-    @FXML
-    private Button emojiBtn1;
-    @FXML
-    private Button emojiBtn2;
-    @FXML
-    private Button emojiBtn3;
-    @FXML
-    private Button emojiBtn4;
-    @FXML
-    private Button emojiBtn5;
+    @FXML private VBox entryContainer;
+    @FXML private VBox waitingContainer;
+    @FXML private TextField usernameField;
+    @FXML private PasswordField passwordField;
+    @FXML private Button playButton;
+    @FXML private Label waitingLabel;
+    @FXML private Label usernameDisplay;
+    @FXML private Label errorLabel;
+    @FXML private Button emojiBtn1;
+    @FXML private Button emojiBtn2;
+    @FXML private Button emojiBtn3;
+    @FXML private Button emojiBtn4;
+    @FXML private Button emojiBtn5;
+    @FXML private StackPane emojiOverlay;
 
     private Timeline pulseTimeline;
 
@@ -66,10 +54,13 @@ public class LobbyController {
     public void initialize() {
         pulseTimeline = new Timeline();
         pulseTimeline.setCycleCount(Timeline.INDEFINITE);
+        if (emojiOverlay != null) {
+            emojiOverlay.setPickOnBounds(false);
+        }
     }
 
     // ========================================================================
-    // Entry state — JOIN ARENA
+    // JOIN ARENA
     // ========================================================================
 
     @FXML
@@ -77,20 +68,13 @@ public class LobbyController {
         String username = usernameField.getText().trim();
         String password = passwordField.getText().trim();
 
-        if (username.isEmpty()) {
-            shake(usernameField);
-            return;
-        }
-        if (password.isEmpty()) {
-            shake(passwordField);
-            return;
-        }
+        if (username.isEmpty()) { shake(usernameField); return; }
+        if (password.isEmpty()) { shake(passwordField); return; }
 
         hideError();
         playButton.setDisable(true);
         playButton.setText("Connecting...");
 
-        // JoinArena uses a blocking stub — must not run on the JavaFX thread.
         CompletableFuture
                 .supplyAsync(() -> GrpcClientService.getInstance().joinArena(username, password))
                 .whenCompleteAsync((response, ex) -> {
@@ -99,7 +83,6 @@ public class LobbyController {
                         resetPlayButton();
                         return;
                     }
-
                     if (!response.getSuccess()) {
                         showError(response.getMessage().isEmpty()
                                 ? "Login failed. Try a different username or password."
@@ -108,9 +91,8 @@ public class LobbyController {
                         return;
                     }
 
-                    // Credentials accepted — store session and move to waiting state.
                     SessionData.username = username;
-                    SessionData.userId = response.getUserId();
+                    SessionData.userId   = response.getUserId();
 
                     entryContainer.setVisible(false);
                     entryContainer.setManaged(false);
@@ -119,15 +101,14 @@ public class LobbyController {
                     usernameDisplay.setText("Playing as: " + username);
                     startPulseAnimation();
 
-                    // Open the bidirectional game stream. The lobby handler's sole job is to
-                    // catch the first NewQuestion event and transition the scene. It blanks itself
-                    // before calling Platform.runLater to prevent a second trigger if two messages
-                    // happen to arrive in rapid succession.
+                    // Open bidirectional stream. Handler switches when first question arrives.
                     GrpcClientService.getInstance().startGameStream(msg -> {
                         if (msg.hasNewQuestion()) {
-                            GrpcClientService.getInstance().setMessageHandler(ignored -> {
-                            });
+                            // Blank ourselves immediately so subsequent messages go to Arena
+                            GrpcClientService.getInstance().setMessageHandler(ignored -> {});
                             Platform.runLater(() -> switchToArena(msg.getNewQuestion()));
+                        } else if (msg.hasEmoji()) {
+                            Platform.runLater(() -> showEmojiReaction(msg.getEmoji()));
                         }
                     });
 
@@ -142,7 +123,7 @@ public class LobbyController {
     }
 
     // ========================================================================
-    // Waiting state — EMOJI REACTIONS (fire-and-forget async RPC)
+    // EMOJI REACTIONS
     // ========================================================================
 
     @FXML
@@ -151,15 +132,37 @@ public class LobbyController {
         String emoji = (String) clicked.getUserData();
 
         ScaleTransition up = new ScaleTransition(Duration.millis(75), clicked);
-        up.setToX(1.3);
-        up.setToY(1.3);
+        up.setToX(1.3); up.setToY(1.3);
         ScaleTransition down = new ScaleTransition(Duration.millis(75), clicked);
-        down.setToX(1.0);
-        down.setToY(1.0);
+        down.setToX(1.0); down.setToY(1.0);
         up.setOnFinished(e -> down.play());
         up.play();
 
         GrpcClientService.getInstance().sendEmoji(emoji);
+    }
+
+    private void showEmojiReaction(EmojiEvent event) {
+        if (emojiOverlay == null) return;
+
+        Label bubble = new Label(event.getEmojiCode());
+        bubble.setStyle("-fx-font-size: 52; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 8, 0, 0, 2);");
+        bubble.setAlignment(Pos.CENTER);
+
+        double xOffset = (Math.random() * 280) - 140;
+        bubble.setTranslateX(xOffset);
+        bubble.setTranslateY(60);
+        bubble.setOpacity(1.0);
+
+        emojiOverlay.getChildren().add(bubble);
+
+        TranslateTransition rise = new TranslateTransition(Duration.millis(2000), bubble);
+        rise.setByY(-260);
+        FadeTransition fade = new FadeTransition(Duration.millis(2000), bubble);
+        fade.setFromValue(1.0);
+        fade.setToValue(0.0);
+        ParallelTransition anim = new ParallelTransition(rise, fade);
+        anim.setOnFinished(e -> emojiOverlay.getChildren().remove(bubble));
+        anim.play();
     }
 
     // ========================================================================
@@ -170,10 +173,6 @@ public class LobbyController {
         try {
             FXMLLoader loader = new FXMLLoader(
                     getClass().getResource("/com/arenadepreguntas/client/fxml/arena.fxml"));
-
-            // loader.load() synchronously calls ArenaController.initialize(), which
-            // immediately registers itself as the message handler — so any subsequent
-            // stream events go straight to the arena controller.
             Parent arenaRoot = loader.load();
 
             ArenaController arenaController = loader.getController();
@@ -196,12 +195,9 @@ public class LobbyController {
         Duration half = Duration.millis(400);
         Duration full = Duration.millis(800);
         pulseTimeline.getKeyFrames().addAll(
-                new KeyFrame(Duration.ZERO,
-                        new KeyValue(waitingLabel.opacityProperty(), 1.0)),
-                new KeyFrame(half,
-                        new KeyValue(waitingLabel.opacityProperty(), 0.5)),
-                new KeyFrame(full,
-                        new KeyValue(waitingLabel.opacityProperty(), 1.0)));
+                new KeyFrame(Duration.ZERO,    new KeyValue(waitingLabel.opacityProperty(), 1.0)),
+                new KeyFrame(half,             new KeyValue(waitingLabel.opacityProperty(), 0.5)),
+                new KeyFrame(full,             new KeyValue(waitingLabel.opacityProperty(), 1.0)));
         pulseTimeline.play();
     }
 

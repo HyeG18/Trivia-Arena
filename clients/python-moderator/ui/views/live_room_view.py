@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 
 from networking.grpc_client import ModeratorGrpcClient
 import config
@@ -264,6 +264,17 @@ class LiveRoomView(QWidget):
             "color: #FF5252; font-size: 12px; font-weight: bold;"
         )
 
+    def on_emoji_received(self, username: str, emoji_code: str) -> None:
+        """Show a temporary emoji toast in the leaderboard area."""
+        toast = QLabel(f"{emoji_code}  {username}")
+        toast.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        toast.setStyleSheet(
+            "color: #FFD700; font-size: 22px; font-weight: bold; "
+            "background: rgba(255,255,255,0.06); border-radius: 8px; padding: 4px 10px;"
+        )
+        self._lb_container.insertWidget(0, toast)
+        QTimer.singleShot(3000, toast.deleteLater)
+
     # ------------------------------------------------------------------ #
     # gRPC actions (fast unary calls — safe to call directly)
     # ------------------------------------------------------------------ #
@@ -281,6 +292,7 @@ class LiveRoomView(QWidget):
                 text=q.get("text", ""),
                 options=q.get("options", []),
                 time_limit_sec=q.get("time_limit_sec", config.DEFAULT_TIME_LIMIT_SEC),
+                correct_answer_index=q.get("correct_option_index", 0),
             )
             if ack.success:
                 self._active_q_label.setText(q.get("text", ""))

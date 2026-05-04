@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\ngame.proto\x12\narena.game\"H\n\rClientMessage\x12,\n\x06\x61nswer\x18\x01 \x01(\x0b\x32\x1a.arena.game.PlayerResponseH\x00\x42\t\n\x07payload\"K\n\x0ePlayerResponse\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x0e\n\x06\x61nswer\x18\x02 \x01(\t\x12\x18\n\x10response_time_ms\x18\x03 \x01(\x05\"3\n\x0c\x45mojiRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x12\n\nemoji_code\x18\x02 \x01(\t\"\'\n\x0f\x46orceEndRequest\x12\x14\n\x0cmoderator_id\x18\x01 \x01(\t\"\x83\x01\n\rServerMessage\x12\x33\n\x0cnew_question\x18\x01 \x01(\x0b\x32\x1b.arena.game.QuestionPayloadH\x00\x12\x34\n\x0bleaderboard\x18\x02 \x01(\x0b\x32\x1d.arena.game.LeaderboardUpdateH\x00\x42\x07\n\x05\x65vent\"H\n\x0fQuestionPayload\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x0f\n\x07options\x18\x02 \x03(\t\x12\x16\n\x0etime_limit_sec\x18\x03 \x01(\x05\"\x8b\x01\n\x11LeaderboardUpdate\x12,\n\x0btop_players\x18\x01 \x03(\x0b\x32\x17.arena.game.PlayerScore\x12/\n\x0e\x63urrent_player\x18\x02 \x01(\x0b\x32\x17.arena.game.PlayerScore\x12\x17\n\x0ftotal_responses\x18\x03 \x01(\x05\"Y\n\x0bPlayerScore\x12\x10\n\x08username\x18\x01 \x01(\t\x12\r\n\x05score\x18\x02 \x01(\x05\x12\x0c\n\x04rank\x18\x03 \x01(\x05\x12\x1b\n\x13last_answer_correct\x18\x04 \x01(\x08\"\x1c\n\x08\x45mojiAck\x12\x10\n\x08received\x18\x01 \x01(\x08\"\x1f\n\x0cModeratorAck\x12\x0f\n\x07success\x18\x01 \x01(\x08\x32\xa3\x02\n\x0bGameService\x12\x46\n\nPlayStream\x12\x19.arena.game.ClientMessage\x1a\x19.arena.game.ServerMessage(\x01\x30\x01\x12;\n\tSendEmoji\x12\x18.arena.game.EmojiRequest\x1a\x14.arena.game.EmojiAck\x12G\n\x0eLaunchQuestion\x12\x1b.arena.game.QuestionPayload\x1a\x18.arena.game.ModeratorAck\x12\x46\n\rForceEndTimer\x12\x1b.arena.game.ForceEndRequest\x1a\x18.arena.game.ModeratorAckB\"\n\x1e\x63om.arenadepreguntas.grpc.gameP\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\ngame.proto\x12\narena.game\"H\n\rClientMessage\x12,\n\x06\x61nswer\x18\x01 \x01(\x0b\x32\x1a.arena.game.PlayerResponseH\x00\x42\t\n\x07payload\"K\n\x0ePlayerResponse\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x0e\n\x06\x61nswer\x18\x02 \x01(\t\x12\x18\n\x10response_time_ms\x18\x03 \x01(\x05\"3\n\x0c\x45mojiRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x12\n\nemoji_code\x18\x02 \x01(\t\"\'\n\x0f\x46orceEndRequest\x12\x14\n\x0cmoderator_id\x18\x01 \x01(\t\"\xac\x01\n\rServerMessage\x12\x33\n\x0cnew_question\x18\x01 \x01(\x0b\x32\x1b.arena.game.QuestionPayloadH\x00\x12\x34\n\x0bleaderboard\x18\x02 \x01(\x0b\x32\x1d.arena.game.LeaderboardUpdateH\x00\x12\'\n\x05\x65moji\x18\x03 \x01(\x0b\x32\x16.arena.game.EmojiEventH\x00\x42\x07\n\x05\x65vent\"f\n\x0fQuestionPayload\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x0f\n\x07options\x18\x02 \x03(\t\x12\x16\n\x0etime_limit_sec\x18\x03 \x01(\x05\x12\x1c\n\x14\x63orrect_answer_index\x18\x04 \x01(\x05\"\x8b\x01\n\x11LeaderboardUpdate\x12,\n\x0btop_players\x18\x01 \x03(\x0b\x32\x17.arena.game.PlayerScore\x12/\n\x0e\x63urrent_player\x18\x02 \x01(\x0b\x32\x17.arena.game.PlayerScore\x12\x17\n\x0ftotal_responses\x18\x03 \x01(\x05\"Y\n\x0bPlayerScore\x12\x10\n\x08username\x18\x01 \x01(\t\x12\r\n\x05score\x18\x02 \x01(\x05\x12\x0c\n\x04rank\x18\x03 \x01(\x05\x12\x1b\n\x13last_answer_correct\x18\x04 \x01(\x08\"2\n\nEmojiEvent\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x12\n\nemoji_code\x18\x02 \x01(\t\"\x1c\n\x08\x45mojiAck\x12\x10\n\x08received\x18\x01 \x01(\x08\"\x1f\n\x0cModeratorAck\x12\x0f\n\x07success\x18\x01 \x01(\x08\x32\xa3\x02\n\x0bGameService\x12\x46\n\nPlayStream\x12\x19.arena.game.ClientMessage\x1a\x19.arena.game.ServerMessage(\x01\x30\x01\x12;\n\tSendEmoji\x12\x18.arena.game.EmojiRequest\x1a\x14.arena.game.EmojiAck\x12G\n\x0eLaunchQuestion\x12\x1b.arena.game.QuestionPayload\x1a\x18.arena.game.ModeratorAck\x12\x46\n\rForceEndTimer\x12\x1b.arena.game.ForceEndRequest\x1a\x18.arena.game.ModeratorAckB\"\n\x1e\x63om.arenadepreguntas.grpc.gameP\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -41,17 +41,19 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_FORCEENDREQUEST']._serialized_start=230
   _globals['_FORCEENDREQUEST']._serialized_end=269
   _globals['_SERVERMESSAGE']._serialized_start=272
-  _globals['_SERVERMESSAGE']._serialized_end=403
-  _globals['_QUESTIONPAYLOAD']._serialized_start=405
-  _globals['_QUESTIONPAYLOAD']._serialized_end=477
-  _globals['_LEADERBOARDUPDATE']._serialized_start=480
-  _globals['_LEADERBOARDUPDATE']._serialized_end=619
-  _globals['_PLAYERSCORE']._serialized_start=621
-  _globals['_PLAYERSCORE']._serialized_end=710
-  _globals['_EMOJIACK']._serialized_start=712
-  _globals['_EMOJIACK']._serialized_end=740
-  _globals['_MODERATORACK']._serialized_start=742
-  _globals['_MODERATORACK']._serialized_end=773
-  _globals['_GAMESERVICE']._serialized_start=776
-  _globals['_GAMESERVICE']._serialized_end=1067
+  _globals['_SERVERMESSAGE']._serialized_end=444
+  _globals['_QUESTIONPAYLOAD']._serialized_start=446
+  _globals['_QUESTIONPAYLOAD']._serialized_end=548
+  _globals['_LEADERBOARDUPDATE']._serialized_start=551
+  _globals['_LEADERBOARDUPDATE']._serialized_end=690
+  _globals['_PLAYERSCORE']._serialized_start=692
+  _globals['_PLAYERSCORE']._serialized_end=781
+  _globals['_EMOJIEVENT']._serialized_start=783
+  _globals['_EMOJIEVENT']._serialized_end=833
+  _globals['_EMOJIACK']._serialized_start=835
+  _globals['_EMOJIACK']._serialized_end=863
+  _globals['_MODERATORACK']._serialized_start=865
+  _globals['_MODERATORACK']._serialized_end=896
+  _globals['_GAMESERVICE']._serialized_start=899
+  _globals['_GAMESERVICE']._serialized_end=1190
 # @@protoc_insertion_point(module_scope)

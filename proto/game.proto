@@ -5,38 +5,31 @@ option java_package = "com.arenadepreguntas.grpc.game";
 option java_multiple_files = true;
 
 service GameService {
-  // 1. STREAMING BIDIRECCIONAL: El bucle principal del juego [cite: 24, 33]
   rpc PlayStream (stream ClientMessage) returns (stream ServerMessage);
-
-  // 2. BULKHEAD (Emojis): Hilo separado para no bloquear el juego 
   rpc SendEmoji (EmojiRequest) returns (EmojiAck);
-
-  // 3. COMANDOS DEL MODERADOR (Python) [cite: 43]
-  rpc LaunchQuestion (QuestionPayload) returns (ModeratorAck); // 
-  rpc ForceEndTimer (ForceEndRequest) returns (ModeratorAck); // [cite: 57]
+  rpc LaunchQuestion (QuestionPayload) returns (ModeratorAck);
+  rpc ForceEndTimer (ForceEndRequest) returns (ModeratorAck);
 }
 
 // ==========================================
-// MENSAJES DEL CLIENTE (Java/Python -> Rust)
+// CLIENT → SERVER
 // ==========================================
 
 message ClientMessage {
-  // "oneof" asegura que el cliente envíe una respuesta O un "ping" de conexión
   oneof payload {
     PlayerResponse answer = 1;
   }
 }
 
-// Estructura exacta solicitada en el documento [cite: 70]
 message PlayerResponse {
   string user_id = 1;
-  string answer = 2; // A, B, C, o D [cite: 38]
+  string answer = 2; // "A", "B", "C", or "D"
   int32 response_time_ms = 3;
 }
 
 message EmojiRequest {
   string user_id = 1;
-  string emoji_code = 2; // Evento asíncrono desde la sala de espera [cite: 22, 23]
+  string emoji_code = 2;
 }
 
 message ForceEndRequest {
@@ -44,35 +37,41 @@ message ForceEndRequest {
 }
 
 // ==========================================
-// MENSAJES DEL SERVIDOR (Rust -> Java/Python)
+// SERVER → CLIENT
 // ==========================================
 
 message ServerMessage {
-  // El servidor puede enviar diferentes eventos por el mismo tubo
   oneof event {
-    QuestionPayload new_question = 1; // [cite: 35]
-    LeaderboardUpdate leaderboard = 2; // [cite: 42]
+    QuestionPayload new_question = 1;
+    LeaderboardUpdate leaderboard = 2;
+    EmojiEvent emoji = 3;
   }
 }
 
-// Estructura exacta solicitada en el documento [cite: 71, 72]
 message QuestionPayload {
   string text = 1;
-  repeated string options = 2; // Opciones en formato de array (A, B, C, D) [cite: 31]
+  repeated string options = 2;
   int32 time_limit_sec = 3;
+  int32 correct_answer_index = 4; // 0=A, 1=B, 2=C, 3=D
 }
 
 message LeaderboardUpdate {
-  repeated PlayerScore top_players = 1; // Top 5 jugadores [cite: 42]
-  PlayerScore current_player = 2; // Puntaje del jugador actual [cite: 42]
-  int32 total_responses = 3; // Para el KPI del moderador (ej. 38/42) [cite: 55]
+  repeated PlayerScore top_players = 1;
+  PlayerScore current_player = 2;
+  int32 total_responses = 3;
 }
 
 message PlayerScore {
   string username = 1;
   int32 score = 2;
-  int32 rank = 3; // Posición actual [cite: 27]
-  bool last_answer_correct = 4; // Para colorear Verde o Rojo [cite: 41]
+  int32 rank = 3;
+  bool last_answer_correct = 4;
+}
+
+// Broadcast emoji reactions to all connected clients
+message EmojiEvent {
+  string username = 1;
+  string emoji_code = 2;
 }
 
 message EmojiAck {

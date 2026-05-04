@@ -65,6 +65,9 @@ class MainWindow(QMainWindow):
         self._stream_worker.question_launched.connect(
             self._live_room.on_question_launched
         )
+        self._stream_worker.emoji_received.connect(
+            self._live_room.on_emoji_received
+        )
         self._stream_worker.error_occurred.connect(self._on_stream_error)
         self._stream_worker.start()
 

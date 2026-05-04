@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import game_pb2 as game__pb2
+import game_pb2 as game__pb2
 
 GRPC_GENERATED_VERSION = '1.80.0'
 GRPC_VERSION = grpc.__version__
@@ -60,30 +60,25 @@ class GameServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def PlayStream(self, request_iterator, context):
-        """1. STREAMING BIDIRECCIONAL: El bucle principal del juego [cite: 24, 33]
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def SendEmoji(self, request, context):
-        """2. BULKHEAD (Emojis): Hilo separado para no bloquear el juego 
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def LaunchQuestion(self, request, context):
-        """3. COMANDOS DEL MODERADOR (Python) [cite: 43]
-
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ForceEndTimer(self, request, context):
-        """[cite: 57]
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
