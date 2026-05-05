@@ -9,9 +9,12 @@ class ModeratorGrpcClient:
     """
     Wraps the GameService gRPC stub for moderator-specific operations.
 
-    Moderator uses three RPCs from game.proto:
+    Moderator uses RPCs from game.proto:
       - LaunchQuestion  (Unary)  — push a question to all players
       - ForceEndTimer   (Unary)  — close the current round early
+      - ApprovePlayer   (Unary)  — grant access to a waiting player
+      - DenyPlayer      (Unary)  — deny access to a waiting player
+      - StartGame       (Unary)  — begin the game flow
       - PlayStream      (BidiStream, receive-only) — receive LeaderboardUpdates
     """
 
@@ -44,6 +47,18 @@ class ModeratorGrpcClient:
         req = game_pb2.ForceEndRequest(moderator_id=config.MODERATOR_ID)
         return self._stub.ForceEndTimer(req)
 
+    def approve_player(self, user_id: str) -> game_pb2.ModeratorAck:
+        req = game_pb2.ApprovePlayerRequest(user_id=user_id)
+        return self._stub.ApprovePlayer(req)
+
+    def deny_player(self, user_id: str) -> game_pb2.ModeratorAck:
+        req = game_pb2.DenyPlayerRequest(user_id=user_id)
+        return self._stub.DenyPlayer(req)
+
+    def start_game(self) -> game_pb2.ModeratorAck:
+        req = game_pb2.StartGameRequest(moderator_id=config.MODERATOR_ID)
+        return self._stub.StartGame(req)
+
     # ------------------------------------------------------------------ #
     # Bidirectional stream (moderator is receive-only)
     # ------------------------------------------------------------------ #
@@ -56,9 +71,10 @@ class ModeratorGrpcClient:
         """
 
         def _empty_requests():
-            # Yield nothing; block until shutdown is signalled.
-            while not stop_event.is_set():
-                stop_event.wait(timeout=0.5)
+            # Block until shutdown — keeps the stream open without sending messages.
+            stop_event.wait()
+            return
+            yield  # makes this a generator so gRPC iterates it lazily
 
         return self._stub.PlayStream(_empty_requests())
 

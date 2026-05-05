@@ -1,12 +1,16 @@
-use tonic::{transport::Server, transport::Channel, Request, Response, Status};
+use tonic::{transport::Channel, transport::Server, Request, Response, Status};
 // ¡NUEVO! Importamos esto para poder "limpiar" el stream de datos
-use tokio_stream::StreamExt; 
+use tokio_stream::StreamExt;
 
-pub mod user { tonic::include_proto!("arena.user"); }
-pub mod game { tonic::include_proto!("arena.game"); }
+pub mod user {
+    tonic::include_proto!("arena.user");
+}
+pub mod game {
+    tonic::include_proto!("arena.game");
+}
 
-use user::user_service_server::{UserService, UserServiceServer};
 use game::game_service_server::{GameService, GameServiceServer};
+use user::user_service_server::{UserService, UserServiceServer};
 
 struct Gateway {
     auth_client_channel: Channel,
@@ -15,9 +19,13 @@ struct Gateway {
 
 #[tonic::async_trait]
 impl UserService for Gateway {
-    async fn join_arena(&self, request: Request<user::JoinRequest>) -> Result<Response<user::JoinResponse>, Status> {
+    async fn join_arena(
+        &self,
+        request: Request<user::JoinRequest>,
+    ) -> Result<Response<user::JoinResponse>, Status> {
         println!("🔀 Gateway: Redirigiendo JoinArena -> Auth-Service (50052)");
-        let mut client = user::user_service_client::UserServiceClient::new(self.auth_client_channel.clone());
+        let mut client =
+            user::user_service_client::UserServiceClient::new(self.auth_client_channel.clone());
         client.join_arena(request).await
     }
 }
@@ -31,12 +39,13 @@ impl GameService for Gateway {
         request: Request<tonic::Streaming<game::ClientMessage>>,
     ) -> Result<Response<Self::PlayStreamStream>, Status> {
         println!("🔀 Gateway: Redirigiendo Stream -> Game-Engine (50051)");
-        let mut client = game::game_service_client::GameServiceClient::new(self.game_client_channel.clone());
-        
+        let mut client =
+            game::game_service_client::GameServiceClient::new(self.game_client_channel.clone());
+
         // Extraemos los mensajes del stream y descartamos los que tengan errores de red
         let in_stream = request.into_inner();
         let mapped_stream = in_stream.filter_map(|res| res.ok());
-        
+
         client.play_stream(mapped_stream).await
     }
 
@@ -45,7 +54,8 @@ impl GameService for Gateway {
         request: Request<game::EmojiRequest>,
     ) -> Result<Response<game::EmojiAck>, Status> {
         println!("🔀 Gateway: Redirigiendo Emoji -> Game-Engine (50051)");
-        let mut client = game::game_service_client::GameServiceClient::new(self.game_client_channel.clone());
+        let mut client =
+            game::game_service_client::GameServiceClient::new(self.game_client_channel.clone());
         client.send_emoji(request).await
     }
 
@@ -54,7 +64,8 @@ impl GameService for Gateway {
         request: Request<game::QuestionPayload>,
     ) -> Result<Response<game::ModeratorAck>, Status> {
         println!("🔀 Gateway: Redirigiendo LaunchQuestion -> Game-Engine");
-        let mut client = game::game_service_client::GameServiceClient::new(self.game_client_channel.clone());
+        let mut client =
+            game::game_service_client::GameServiceClient::new(self.game_client_channel.clone());
         client.launch_question(request).await
     }
 
@@ -63,8 +74,39 @@ impl GameService for Gateway {
         request: Request<game::ForceEndRequest>,
     ) -> Result<Response<game::ModeratorAck>, Status> {
         println!("🔀 Gateway: Redirigiendo ForceEndTimer -> Game-Engine");
-        let mut client = game::game_service_client::GameServiceClient::new(self.game_client_channel.clone());
+        let mut client =
+            game::game_service_client::GameServiceClient::new(self.game_client_channel.clone());
         client.force_end_timer(request).await
+    }
+
+    async fn approve_player(
+        &self,
+        request: Request<game::ApprovePlayerRequest>,
+    ) -> Result<Response<game::ModeratorAck>, Status> {
+        println!("🔀 Gateway: Redirigiendo ApprovePlayer -> Game-Engine");
+        let mut client =
+            game::game_service_client::GameServiceClient::new(self.game_client_channel.clone());
+        client.approve_player(request).await
+    }
+
+    async fn deny_player(
+        &self,
+        request: Request<game::DenyPlayerRequest>,
+    ) -> Result<Response<game::ModeratorAck>, Status> {
+        println!("🔀 Gateway: Redirigiendo DenyPlayer -> Game-Engine");
+        let mut client =
+            game::game_service_client::GameServiceClient::new(self.game_client_channel.clone());
+        client.deny_player(request).await
+    }
+
+    async fn start_game(
+        &self,
+        request: Request<game::StartGameRequest>,
+    ) -> Result<Response<game::ModeratorAck>, Status> {
+        println!("🔀 Gateway: Redirigiendo StartGame -> Game-Engine");
+        let mut client =
+            game::game_service_client::GameServiceClient::new(self.game_client_channel.clone());
+        client.start_game(request).await
     }
 }
 

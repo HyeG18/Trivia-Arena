@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -45,6 +46,7 @@ class LiveRoomView(QWidget):
         super().__init__(parent)
         self._get_questions = question_bank_getter
         self._grpc = ModeratorGrpcClient()
+        self._game_started = False
         self._build_ui()
 
     # ------------------------------------------------------------------ #
@@ -89,6 +91,7 @@ class LiveRoomView(QWidget):
         row.setSpacing(20)
         row.addWidget(self._build_question_card(), stretch=3)
         row.addWidget(self._build_leaderboard_card(), stretch=2)
+        row.addWidget(self._build_waiting_card(), stretch=2)
         return row
 
     def _build_question_card(self) -> QFrame:
@@ -143,6 +146,37 @@ class LiveRoomView(QWidget):
         self._render_leaderboard([])   # show placeholder
         return card
 
+    def _build_waiting_card(self) -> QFrame:
+        card = QFrame()
+        card.setObjectName("card")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(10)
+
+        header = QHBoxLayout()
+        title = QLabel("WAITING PLAYERS")
+        title.setObjectName("sectionTitle")
+        header.addWidget(title)
+        header.addStretch()
+        self._waiting_count = QLabel("0")
+        self._waiting_count.setObjectName("statusLabel")
+        header.addWidget(self._waiting_count)
+        layout.addLayout(header)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        container = QWidget()
+        self._waiting_list = QVBoxLayout(container)
+        self._waiting_list.setSpacing(6)
+        self._waiting_list.addStretch()
+        scroll.setWidget(container)
+
+        layout.addWidget(scroll)
+        self._render_waiting_list([])
+        return card
+
     def _build_launch_card(self) -> QFrame:
         card = QFrame()
         card.setObjectName("card")
@@ -170,9 +204,16 @@ class LiveRoomView(QWidget):
         sel_row.addWidget(btn_reload)
         layout.addLayout(sel_row)
 
+        self._btn_start_game = QPushButton("▶  START GAME")
+        self._btn_start_game.setObjectName("btnSuccess")
+        self._btn_start_game.clicked.connect(self._start_game)
+        self._btn_start_game.setEnabled(False)
+        layout.addWidget(self._btn_start_game)
+
         self._btn_launch = QPushButton("⚡  LAUNCH NEXT QUESTION")
         self._btn_launch.setObjectName("btnLaunch")
         self._btn_launch.clicked.connect(self._launch_question)
+        self._btn_launch.setEnabled(False)
         layout.addWidget(self._btn_launch)
 
         self._refresh_combo()
@@ -236,6 +277,49 @@ class LiveRoomView(QWidget):
 
             self._lb_container.addWidget(row_frame)
 
+    def _render_waiting_list(self, waiting: list[dict]) -> None:
+        while self._waiting_list.count():
+            item = self._waiting_list.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if not waiting:
+            empty = QLabel("No players waiting.")
+            empty.setObjectName("statusLabel")
+            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._waiting_list.addWidget(empty)
+            self._waiting_list.addStretch()
+            return
+
+        for player in waiting:
+            row = QHBoxLayout()
+            row.setSpacing(8)
+
+            name = QLabel(player.get("username", "—"))
+            name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+            btn_approve = QPushButton("Approve")
+            btn_approve.setObjectName("btnSuccess")
+            btn_approve.clicked.connect(
+                lambda _, uid=player.get("user_id", ""): self._approve_player(uid)
+            )
+
+            btn_deny = QPushButton("Deny")
+            btn_deny.setObjectName("btnDanger")
+            btn_deny.clicked.connect(
+                lambda _, uid=player.get("user_id", ""): self._deny_player(uid)
+            )
+
+            row_widget = QWidget()
+            row_widget.setLayout(row)
+            row.addWidget(name)
+            row.addWidget(btn_approve)
+            row.addWidget(btn_deny)
+
+            self._waiting_list.addWidget(row_widget)
+
+        self._waiting_list.addStretch()
+
     # ------------------------------------------------------------------ #
     # Slots wired by MainWindow (called on GUI thread via Qt signal)
     # ------------------------------------------------------------------ #
@@ -251,6 +335,7 @@ class LiveRoomView(QWidget):
     def on_question_launched(self, text: str, options: list, time_limit: int) -> None:
         """Update the active question display when a question is launched."""
         self._active_q_label.setText(text)
+        self._kpi_responses.set_value("0")
 
     def on_stream_connected(self) -> None:
         self._stream_status_lbl.setText("● STREAM ACTIVE")
@@ -274,6 +359,22 @@ class LiveRoomView(QWidget):
         )
         self._lb_container.insertWidget(0, toast)
         QTimer.singleShot(3000, toast.deleteLater)
+
+    def on_roster_updated(
+        self,
+        waiting: list,
+        approved: list,
+        total_connected: int,
+        game_started: bool,
+        total_responses: int,
+    ) -> None:
+        self._waiting_count.setText(str(len(waiting)))
+        self._kpi_players.set_value(str(total_connected))
+        self._kpi_responses.set_value(str(total_responses))
+        self._game_started = game_started
+        self._btn_start_game.setEnabled(not game_started and len(approved) > 0)
+        self._btn_launch.setEnabled(game_started)
+        self._render_waiting_list(waiting)
 
     # ------------------------------------------------------------------ #
     # gRPC actions (fast unary calls — safe to call directly)
@@ -304,6 +405,34 @@ class LiveRoomView(QWidget):
     def _force_end_timer(self) -> None:
         try:
             self._grpc.force_end_timer()
+        except Exception as exc:
+            QMessageBox.critical(self, "gRPC Error", str(exc))
+
+    def _approve_player(self, user_id: str) -> None:
+        if not user_id:
+            return
+        try:
+            ack = self._grpc.approve_player(user_id)
+            if not ack.success:
+                QMessageBox.warning(self, "Approve Failed", "The server rejected the approve request.")
+        except Exception as exc:
+            QMessageBox.critical(self, "gRPC Error", str(exc))
+
+    def _deny_player(self, user_id: str) -> None:
+        if not user_id:
+            return
+        try:
+            ack = self._grpc.deny_player(user_id)
+            if not ack.success:
+                QMessageBox.warning(self, "Deny Failed", "The server rejected the deny request.")
+        except Exception as exc:
+            QMessageBox.critical(self, "gRPC Error", str(exc))
+
+    def _start_game(self) -> None:
+        try:
+            ack = self._grpc.start_game()
+            if not ack.success:
+                QMessageBox.warning(self, "Start Failed", "The server rejected the start request.")
         except Exception as exc:
             QMessageBox.critical(self, "gRPC Error", str(exc))
 

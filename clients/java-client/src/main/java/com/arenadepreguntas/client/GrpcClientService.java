@@ -106,6 +106,7 @@ public class GrpcClientService {
         };
 
         outboundStream = gameAsyncStub.playStream(responseObserver);
+        sendClientHello();
     }
 
     /**
@@ -157,6 +158,27 @@ public class GrpcClientService {
             System.out.println("[gRPC] Sent answer: " + answerLetter + " (time: " + responseTimeMs + "ms)");
         } catch (Exception e) {
             System.err.println("[gRPC] Failed to send answer: " + e.getMessage());
+        }
+    }
+
+    private void sendClientHello() {
+        if (outboundStream == null || SessionData.userId == null || SessionData.userId.isEmpty()) {
+            return;
+        }
+
+        ClientHello hello = ClientHello.newBuilder()
+                .setUserId(SessionData.userId)
+                .build();
+
+        ClientMessage msg = ClientMessage.newBuilder()
+                .setHello(hello)
+                .build();
+
+        try {
+            outboundStream.onNext(msg);
+            System.out.println("[gRPC] Sent ClientHello for " + SessionData.userId);
+        } catch (Exception e) {
+            System.err.println("[gRPC] Failed to send ClientHello: " + e.getMessage());
         }
     }
 

@@ -9,6 +9,9 @@ service GameService {
   rpc SendEmoji (EmojiRequest) returns (EmojiAck);
   rpc LaunchQuestion (QuestionPayload) returns (ModeratorAck);
   rpc ForceEndTimer (ForceEndRequest) returns (ModeratorAck);
+  rpc ApprovePlayer (ApprovePlayerRequest) returns (ModeratorAck);
+  rpc DenyPlayer (DenyPlayerRequest) returns (ModeratorAck);
+  rpc StartGame (StartGameRequest) returns (ModeratorAck);
 }
 
 // ==========================================
@@ -18,7 +21,12 @@ service GameService {
 message ClientMessage {
   oneof payload {
     PlayerResponse answer = 1;
+    ClientHello hello = 2;
   }
+}
+
+message ClientHello {
+  string user_id = 1;
 }
 
 message PlayerResponse {
@@ -36,6 +44,18 @@ message ForceEndRequest {
   string moderator_id = 1;
 }
 
+message ApprovePlayerRequest {
+  string user_id = 1;
+}
+
+message DenyPlayerRequest {
+  string user_id = 1;
+}
+
+message StartGameRequest {
+  string moderator_id = 1;
+}
+
 // ==========================================
 // SERVER → CLIENT
 // ==========================================
@@ -45,6 +65,9 @@ message ServerMessage {
     QuestionPayload new_question = 1;
     LeaderboardUpdate leaderboard = 2;
     EmojiEvent emoji = 3;
+    RoomAccessUpdate room_access = 4;
+    GameStateUpdate game_state = 5;
+    RoomRoster roster = 6;
   }
 }
 
@@ -66,12 +89,44 @@ message PlayerScore {
   int32 score = 2;
   int32 rank = 3;
   bool last_answer_correct = 4;
+  string user_id = 5;
 }
 
 // Broadcast emoji reactions to all connected clients
 message EmojiEvent {
   string username = 1;
   string emoji_code = 2;
+}
+
+enum RoomAccessStatus {
+  ROOM_ACCESS_STATUS_UNSPECIFIED = 0;
+  ROOM_ACCESS_PENDING = 1;
+  ROOM_ACCESS_GRANTED = 2;
+  ROOM_ACCESS_DENIED = 3;
+}
+
+message RoomAccessUpdate {
+  string user_id = 1;
+  RoomAccessStatus status = 2;
+  string message = 3;
+}
+
+message GameStateUpdate {
+  bool started = 1;
+}
+
+message PlayerInfo {
+  string user_id = 1;
+  string username = 2;
+  RoomAccessStatus status = 3;
+}
+
+message RoomRoster {
+  repeated PlayerInfo waiting = 1;
+  repeated PlayerInfo approved = 2;
+  int32 total_connected = 3;
+  bool game_started = 4;
+  int32 total_responses = 5;
 }
 
 message EmojiAck {

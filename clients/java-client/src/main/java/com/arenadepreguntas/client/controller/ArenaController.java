@@ -31,23 +31,39 @@ public class ArenaController {
     // FXML bindings
     // ========================================================================
 
-    @FXML private StackPane arenaRoot;
-    @FXML private ProgressBar timerBar;
-    @FXML private Label questionMeta;
-    @FXML private Label questionText;
-    @FXML private Button answerBtnA;
-    @FXML private Button answerBtnB;
-    @FXML private Button answerBtnC;
-    @FXML private Button answerBtnD;
-    @FXML private Label headerUsername;
-    @FXML private Label scoreLabel;
-    @FXML private Label rankBadge;
-    @FXML private Label avatarInitial;
-    @FXML private StackPane avatarCircle;
-    @FXML private StackPane leaderboardOverlay;
-    @FXML private StackPane emojiOverlay;
+    @FXML
+    private StackPane arenaRoot;
+    @FXML
+    private ProgressBar timerBar;
+    @FXML
+    private Label questionMeta;
+    @FXML
+    private Label questionText;
+    @FXML
+    private Button answerBtnA;
+    @FXML
+    private Button answerBtnB;
+    @FXML
+    private Button answerBtnC;
+    @FXML
+    private Button answerBtnD;
+    @FXML
+    private Label headerUsername;
+    @FXML
+    private Label scoreLabel;
+    @FXML
+    private Label rankBadge;
+    @FXML
+    private Label avatarInitial;
+    @FXML
+    private StackPane avatarCircle;
+    @FXML
+    private StackPane leaderboardOverlay;
+    @FXML
+    private StackPane emojiOverlay;
 
-    @FXML private LeaderboardController leaderboardOverlayController;
+    @FXML
+    private LeaderboardController leaderboardOverlayController;
 
     // ========================================================================
     // State
@@ -72,25 +88,25 @@ public class ArenaController {
 
         GrpcClientService.getInstance().setMessageHandler(this::handleServerMessage);
 
-        Platform.runLater(() -> {
-            String initial = SessionData.username.isEmpty() ? "?"
-                    : SessionData.username.substring(0, 1).toUpperCase();
-            headerUsername.setText(SessionData.username);
-            avatarInitial.setText(initial);
-            scoreLabel.setText("0 pts");
-            rankBadge.setText("# —");
-            questionMeta.setText("");
-            questionText.setText("⏳  Waiting for the game to start…");
-            setAnswerButtonsEnabled(false);
+        // Already on the FX thread (called from FXMLLoader.load inside Platform.runLater).
+        // Running directly ensures displayFirstQuestion() can overwrite this initial state.
+        String initial = SessionData.username.isEmpty() ? "?"
+                : SessionData.username.substring(0, 1).toUpperCase();
+        headerUsername.setText(SessionData.username);
+        avatarInitial.setText(initial);
+        scoreLabel.setText("0 pts");
+        rankBadge.setText("# —");
+        questionMeta.setText("");
+        questionText.setText("⏳  Waiting for the game to start…");
+        setAnswerButtonsEnabled(false);
 
-            if (leaderboardOverlay != null) {
-                leaderboardOverlay.setVisible(false);
-                leaderboardOverlay.setManaged(false);
-            }
-            if (emojiOverlay != null) {
-                emojiOverlay.setPickOnBounds(false);
-            }
-        });
+        if (leaderboardOverlay != null) {
+            leaderboardOverlay.setVisible(false);
+            leaderboardOverlay.setManaged(false);
+        }
+        if (emojiOverlay != null) {
+            emojiOverlay.setPickOnBounds(false);
+        }
     }
 
     public void displayFirstQuestion(QuestionPayload question) {
@@ -115,22 +131,60 @@ public class ArenaController {
     // Answer buttons
     // ========================================================================
 
-    @FXML private void handleAnswerClickedA() { submitAnswer("A"); }
-    @FXML private void handleAnswerClickedB() { submitAnswer("B"); }
-    @FXML private void handleAnswerClickedC() { submitAnswer("C"); }
-    @FXML private void handleAnswerClickedD() { submitAnswer("D"); }
+    @FXML
+    private void handleAnswerClickedA() {
+        submitAnswer("A");
+    }
+
+    @FXML
+    private void handleAnswerClickedB() {
+        submitAnswer("B");
+    }
+
+    @FXML
+    private void handleAnswerClickedC() {
+        submitAnswer("C");
+    }
+
+    @FXML
+    private void handleAnswerClickedD() {
+        submitAnswer("D");
+    }
 
     private void submitAnswer(String letter) {
-        if (hasAnswered) return; // guard against double-tap
+        if (hasAnswered)
+            return; // guard against double-tap
         hasAnswered = true;
 
         Button selected, o1, o2, o3;
         switch (letter) {
-            case "A" -> { selected = answerBtnA; o1 = answerBtnB; o2 = answerBtnC; o3 = answerBtnD; }
-            case "B" -> { selected = answerBtnB; o1 = answerBtnA; o2 = answerBtnC; o3 = answerBtnD; }
-            case "C" -> { selected = answerBtnC; o1 = answerBtnA; o2 = answerBtnB; o3 = answerBtnD; }
-            case "D" -> { selected = answerBtnD; o1 = answerBtnA; o2 = answerBtnB; o3 = answerBtnC; }
-            default -> { return; }
+            case "A" -> {
+                selected = answerBtnA;
+                o1 = answerBtnB;
+                o2 = answerBtnC;
+                o3 = answerBtnD;
+            }
+            case "B" -> {
+                selected = answerBtnB;
+                o1 = answerBtnA;
+                o2 = answerBtnC;
+                o3 = answerBtnD;
+            }
+            case "C" -> {
+                selected = answerBtnC;
+                o1 = answerBtnA;
+                o2 = answerBtnB;
+                o3 = answerBtnD;
+            }
+            case "D" -> {
+                selected = answerBtnD;
+                o1 = answerBtnA;
+                o2 = answerBtnB;
+                o3 = answerBtnC;
+            }
+            default -> {
+                return;
+            }
         }
 
         if (!selected.getStyleClass().contains("btn-answer-selected"))
@@ -183,16 +237,18 @@ public class ArenaController {
         // acknowledged. Other players' answers come through here too — update the
         // top-players list but leave timer and buttons alone for those.
         boolean isOwnUpdate = update.hasCurrentPlayer()
-                && update.getCurrentPlayer().getUsername().equals(SessionData.username);
+                && (!update.getCurrentPlayer().getUserId().isEmpty()
+                        ? update.getCurrentPlayer().getUserId().equals(SessionData.userId)
+                        : update.getCurrentPlayer().getUsername().equals(SessionData.username));
 
         if (isOwnUpdate) {
             stopTimer();
             setAnswerButtonsEnabled(false);
 
             int score = update.getCurrentPlayer().getScore();
-            int rank  = update.getCurrentPlayer().getRank();
+            int rank = update.getCurrentPlayer().getRank();
             SessionData.currentScore = score;
-            SessionData.currentRank  = rank;
+            SessionData.currentRank = rank;
             scoreLabel.setText(String.format("%,d pts", score));
             rankBadge.setText(rankEmoji(rank) + " #" + rank);
         }
@@ -219,7 +275,8 @@ public class ArenaController {
     // ========================================================================
 
     private void showEmojiReaction(EmojiEvent event) {
-        if (emojiOverlay == null) return;
+        if (emojiOverlay == null)
+            return;
 
         Label bubble = new Label(event.getEmojiCode());
         bubble.setStyle("-fx-font-size: 48; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 8, 0, 0, 2);");
@@ -251,7 +308,8 @@ public class ArenaController {
     // ========================================================================
 
     private void startTimer(int timeLimitSec) {
-        if (timerTimeline != null) timerTimeline.stop();
+        if (timerTimeline != null)
+            timerTimeline.stop();
 
         timerBar.getStyleClass().removeAll("timer-warning", "timer-danger");
         timerBar.setProgress(1.0);
@@ -288,7 +346,8 @@ public class ArenaController {
     }
 
     private void stopTimer() {
-        if (timerTimeline != null) timerTimeline.stop();
+        if (timerTimeline != null)
+            timerTimeline.stop();
     }
 
     // ========================================================================
@@ -296,7 +355,7 @@ public class ArenaController {
     // ========================================================================
 
     private void resetAnswerButtonStyles() {
-        for (Button b : new Button[]{ answerBtnA, answerBtnB, answerBtnC, answerBtnD }) {
+        for (Button b : new Button[] { answerBtnA, answerBtnB, answerBtnC, answerBtnD }) {
             b.getStyleClass().removeAll("btn-answer-selected", "btn-answer-dimmed");
         }
     }

@@ -3,7 +3,10 @@ package com.arenadepreguntas.client.controller;
 import com.arenadepreguntas.client.GrpcClientService;
 import com.arenadepreguntas.client.SessionData;
 import com.arenadepreguntas.grpc.game.EmojiEvent;
+import com.arenadepreguntas.grpc.game.GameStateUpdate;
 import com.arenadepreguntas.grpc.game.QuestionPayload;
+import com.arenadepreguntas.grpc.game.RoomAccessUpdate;
+import com.arenadepreguntas.grpc.game.RoomAccessStatus;
 
 import javafx.animation.FadeTransition;
 import javafx.animation.KeyFrame;
@@ -33,20 +36,34 @@ import java.util.concurrent.CompletableFuture;
 
 public class LobbyController {
 
-    @FXML private VBox entryContainer;
-    @FXML private VBox waitingContainer;
-    @FXML private TextField usernameField;
-    @FXML private PasswordField passwordField;
-    @FXML private Button playButton;
-    @FXML private Label waitingLabel;
-    @FXML private Label usernameDisplay;
-    @FXML private Label errorLabel;
-    @FXML private Button emojiBtn1;
-    @FXML private Button emojiBtn2;
-    @FXML private Button emojiBtn3;
-    @FXML private Button emojiBtn4;
-    @FXML private Button emojiBtn5;
-    @FXML private StackPane emojiOverlay;
+    @FXML
+    private VBox entryContainer;
+    @FXML
+    private VBox waitingContainer;
+    @FXML
+    private TextField usernameField;
+    @FXML
+    private PasswordField passwordField;
+    @FXML
+    private Button playButton;
+    @FXML
+    private Label waitingLabel;
+    @FXML
+    private Label usernameDisplay;
+    @FXML
+    private Label errorLabel;
+    @FXML
+    private Button emojiBtn1;
+    @FXML
+    private Button emojiBtn2;
+    @FXML
+    private Button emojiBtn3;
+    @FXML
+    private Button emojiBtn4;
+    @FXML
+    private Button emojiBtn5;
+    @FXML
+    private StackPane emojiOverlay;
 
     private Timeline pulseTimeline;
 
@@ -68,8 +85,14 @@ public class LobbyController {
         String username = usernameField.getText().trim();
         String password = passwordField.getText().trim();
 
-        if (username.isEmpty()) { shake(usernameField); return; }
-        if (password.isEmpty()) { shake(passwordField); return; }
+        if (username.isEmpty()) {
+            shake(usernameField);
+            return;
+        }
+        if (password.isEmpty()) {
+            shake(passwordField);
+            return;
+        }
 
         hideError();
         playButton.setDisable(true);
@@ -77,12 +100,7 @@ public class LobbyController {
 
         CompletableFuture
                 .supplyAsync(() -> GrpcClientService.getInstance().joinArena(username, password))
-                .whenCompleteAsync((response, ex) -> {
-                    if (ex != null) {
-                        showError("Could not reach the server. Check your connection.");
-                        resetPlayButton();
-                        return;
-                    }
+                .thenAcceptAsync((response) -> {
                     if (!response.getSuccess()) {
                         showError(response.getMessage().isEmpty()
                                 ? "Login failed. Try a different username or password."
@@ -92,7 +110,7 @@ public class LobbyController {
                     }
 
                     SessionData.username = username;
-                    SessionData.userId   = response.getUserId();
+                    SessionData.userId = response.getUserId();
 
                     entryContainer.setVisible(false);
                     entryContainer.setManaged(false);
@@ -103,9 +121,14 @@ public class LobbyController {
 
                     // Open bidirectional stream. Handler switches when first question arrives.
                     GrpcClientService.getInstance().startGameStream(msg -> {
-                        if (msg.hasNewQuestion()) {
+                        if (msg.hasRoomAccess()) {
+                            Platform.runLater(() -> handleRoomAccess(msg.getRoomAccess()));
+                        } else if (msg.hasGameState()) {
+                            Platform.runLater(() -> handleGameState(msg.getGameState()));
+                        } else if (msg.hasNewQuestion()) {
                             // Blank ourselves immediately so subsequent messages go to Arena
-                            GrpcClientService.getInstance().setMessageHandler(ignored -> {});
+                            GrpcClientService.getInstance().setMessageHandler(ignored -> {
+                            });
                             Platform.runLater(() -> switchToArena(msg.getNewQuestion()));
                         } else if (msg.hasEmoji()) {
                             Platform.runLater(() -> showEmojiReaction(msg.getEmoji()));
@@ -115,7 +138,7 @@ public class LobbyController {
                 }, Platform::runLater)
                 .exceptionally(ex -> {
                     Platform.runLater(() -> {
-                        showError("Unexpected error. Please try again.");
+                        showError("Could not reach the server. Check your connection.");
                         resetPlayButton();
                     });
                     return null;
@@ -132,9 +155,11 @@ public class LobbyController {
         String emoji = (String) clicked.getUserData();
 
         ScaleTransition up = new ScaleTransition(Duration.millis(75), clicked);
-        up.setToX(1.3); up.setToY(1.3);
+        up.setToX(1.3);
+        up.setToY(1.3);
         ScaleTransition down = new ScaleTransition(Duration.millis(75), clicked);
-        down.setToX(1.0); down.setToY(1.0);
+        down.setToX(1.0);
+        down.setToY(1.0);
         up.setOnFinished(e -> down.play());
         up.play();
 
@@ -142,7 +167,8 @@ public class LobbyController {
     }
 
     private void showEmojiReaction(EmojiEvent event) {
-        if (emojiOverlay == null) return;
+        if (emojiOverlay == null)
+            return;
 
         Label bubble = new Label(event.getEmojiCode());
         bubble.setStyle("-fx-font-size: 52; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 8, 0, 0, 2);");
@@ -186,6 +212,33 @@ public class LobbyController {
         }
     }
 
+    private void handleRoomAccess(RoomAccessUpdate update) {
+        if (!update.getUserId().equals(SessionData.userId)) {
+            return;
+        }
+
+        if (update.getStatus() == RoomAccessStatus.ROOM_ACCESS_GRANTED) {
+            waitingLabel.setText("✅ Access granted. Waiting for the game to start...");
+        } else if (update.getStatus() == RoomAccessStatus.ROOM_ACCESS_DENIED) {
+            showError(update.getMessage().isEmpty()
+                    ? "Access denied by moderator."
+                    : update.getMessage());
+            waitingContainer.setVisible(false);
+            waitingContainer.setManaged(false);
+            entryContainer.setVisible(true);
+            entryContainer.setManaged(true);
+            resetPlayButton();
+        } else if (update.getStatus() == RoomAccessStatus.ROOM_ACCESS_PENDING) {
+            waitingLabel.setText("⏳ Waiting for moderator approval...");
+        }
+    }
+
+    private void handleGameState(GameStateUpdate update) {
+        if (update.getStarted()) {
+            waitingLabel.setText("🎮 Game starting...");
+        }
+    }
+
     // ========================================================================
     // Helpers
     // ========================================================================
@@ -195,9 +248,9 @@ public class LobbyController {
         Duration half = Duration.millis(400);
         Duration full = Duration.millis(800);
         pulseTimeline.getKeyFrames().addAll(
-                new KeyFrame(Duration.ZERO,    new KeyValue(waitingLabel.opacityProperty(), 1.0)),
-                new KeyFrame(half,             new KeyValue(waitingLabel.opacityProperty(), 0.5)),
-                new KeyFrame(full,             new KeyValue(waitingLabel.opacityProperty(), 1.0)));
+                new KeyFrame(Duration.ZERO, new KeyValue(waitingLabel.opacityProperty(), 1.0)),
+                new KeyFrame(half, new KeyValue(waitingLabel.opacityProperty(), 0.5)),
+                new KeyFrame(full, new KeyValue(waitingLabel.opacityProperty(), 1.0)));
         pulseTimeline.play();
     }
 

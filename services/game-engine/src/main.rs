@@ -69,12 +69,13 @@ pub struct MyGameServer {
     redis_client: RedisClient,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ConnectionEntry {
     sender: mpsc::Sender<Result<ServerMessage, Status>>,
     user_id: Option<String>,
 }
 
+#[derive(Debug)]
 struct PlayerEntry {
     username: String,
     status: RoomAccessStatus,
@@ -359,11 +360,13 @@ impl GameService for MyGameServer {
                         drop(state_guard);
 
                         let pending_msg = ServerMessage {
-                            event: Some(game::server_message::Event::RoomAccess(RoomAccessUpdate {
-                                user_id: user_id.clone(),
-                                status: RoomAccessStatus::RoomAccessPending as i32,
-                                message: "Esperando aprobación del moderador...".to_string(),
-                            })),
+                            event: Some(game::server_message::Event::RoomAccess(
+                                RoomAccessUpdate {
+                                    user_id: user_id.clone(),
+                                    status: RoomAccessStatus::RoomAccessPending as i32,
+                                    message: "Esperando aprobación del moderador...".to_string(),
+                                },
+                            )),
                         };
                         let _ = tx.send(Ok(pending_msg)).await;
 
@@ -482,7 +485,8 @@ impl GameService for MyGameServer {
                                 let time_limit_ms = time_limit_sec * 1000;
                                 let response_time = player_response.response_time_ms;
                                 let strategy: Box<dyn ScoringStrategy> = Box::new(DynamicScoring);
-                                puntos_ganados = strategy.calculate_score(response_time, time_limit_ms);
+                                puntos_ganados =
+                                    strategy.calculate_score(response_time, time_limit_ms);
                                 es_correcta = true;
                                 println!(
                                     "✅ ¡Acertó ({})! {} ganó {} pts en {}ms",
@@ -590,9 +594,7 @@ impl GameService for MyGameServer {
                             broadcast_to_approved_and_observers(&state, msg).await;
                             println!(
                                 "📊 Leaderboard enviado — {} tiene {} pts (rank #{})",
-                                username,
-                                current_score_f as i32,
-                                current_rank
+                                username, current_score_f as i32, current_rank
                             );
                         }
                     }
@@ -901,7 +903,10 @@ impl GameService for MyGameServer {
                     .await;
 
                 match result {
-                    Ok(_) => println!("💾 Puntos guardados para {}: +{}", player_user_id, puntos_i32),
+                    Ok(_) => println!(
+                        "💾 Puntos guardados para {}: +{}",
+                        player_user_id, puntos_i32
+                    ),
                     Err(e) => {
                         eprintln!("❌ Error guardando puntos para {}: {}", player_user_id, e)
                     }

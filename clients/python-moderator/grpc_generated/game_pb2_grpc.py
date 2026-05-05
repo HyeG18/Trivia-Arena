@@ -54,6 +54,21 @@ class GameServiceStub(object):
                 request_serializer=game__pb2.ForceEndRequest.SerializeToString,
                 response_deserializer=game__pb2.ModeratorAck.FromString,
                 _registered_method=True)
+        self.ApprovePlayer = channel.unary_unary(
+                '/arena.game.GameService/ApprovePlayer',
+                request_serializer=game__pb2.ApprovePlayerRequest.SerializeToString,
+                response_deserializer=game__pb2.ModeratorAck.FromString,
+                _registered_method=True)
+        self.DenyPlayer = channel.unary_unary(
+                '/arena.game.GameService/DenyPlayer',
+                request_serializer=game__pb2.DenyPlayerRequest.SerializeToString,
+                response_deserializer=game__pb2.ModeratorAck.FromString,
+                _registered_method=True)
+        self.StartGame = channel.unary_unary(
+                '/arena.game.GameService/StartGame',
+                request_serializer=game__pb2.StartGameRequest.SerializeToString,
+                response_deserializer=game__pb2.ModeratorAck.FromString,
+                _registered_method=True)
 
 
 class GameServiceServicer(object):
@@ -83,6 +98,24 @@ class GameServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ApprovePlayer(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DenyPlayer(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StartGame(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_GameServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -104,6 +137,21 @@ def add_GameServiceServicer_to_server(servicer, server):
             'ForceEndTimer': grpc.unary_unary_rpc_method_handler(
                     servicer.ForceEndTimer,
                     request_deserializer=game__pb2.ForceEndRequest.FromString,
+                    response_serializer=game__pb2.ModeratorAck.SerializeToString,
+            ),
+            'ApprovePlayer': grpc.unary_unary_rpc_method_handler(
+                    servicer.ApprovePlayer,
+                    request_deserializer=game__pb2.ApprovePlayerRequest.FromString,
+                    response_serializer=game__pb2.ModeratorAck.SerializeToString,
+            ),
+            'DenyPlayer': grpc.unary_unary_rpc_method_handler(
+                    servicer.DenyPlayer,
+                    request_deserializer=game__pb2.DenyPlayerRequest.FromString,
+                    response_serializer=game__pb2.ModeratorAck.SerializeToString,
+            ),
+            'StartGame': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartGame,
+                    request_deserializer=game__pb2.StartGameRequest.FromString,
                     response_serializer=game__pb2.ModeratorAck.SerializeToString,
             ),
     }
@@ -214,6 +262,87 @@ class GameService(object):
             target,
             '/arena.game.GameService/ForceEndTimer',
             game__pb2.ForceEndRequest.SerializeToString,
+            game__pb2.ModeratorAck.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ApprovePlayer(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/arena.game.GameService/ApprovePlayer',
+            game__pb2.ApprovePlayerRequest.SerializeToString,
+            game__pb2.ModeratorAck.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DenyPlayer(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/arena.game.GameService/DenyPlayer',
+            game__pb2.DenyPlayerRequest.SerializeToString,
+            game__pb2.ModeratorAck.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartGame(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/arena.game.GameService/StartGame',
+            game__pb2.StartGameRequest.SerializeToString,
             game__pb2.ModeratorAck.FromString,
             options,
             channel_credentials,

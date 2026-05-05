@@ -1,9 +1,9 @@
-use tonic::{transport::Server, Request, Response, Status};
 use dotenvy::dotenv;
-use std::env;
-use sqlx::postgres::PgPool;
-use uuid::Uuid;
 use redis::AsyncCommands;
+use sqlx::postgres::PgPool;
+use std::env;
+use tonic::{transport::Server, Request, Response, Status};
+use uuid::Uuid;
 // NUEVO: Importamos las funciones para encriptar y verificar contraseñas
 use bcrypt::{hash, verify, DEFAULT_COST};
 
@@ -36,20 +36,19 @@ impl UserService for MyAuthServer {
         // FASE 1: ¿EXISTE EL USUARIO? (PostgreSQL)
         // ====================================================
         // Consultamos si el usuario ya existe para obtener su ID y Hash
-        let existing_user: Option<(String, String)> = sqlx::query_as(
-            "SELECT id, password_hash FROM users WHERE username = $1"
-        )
-        .bind(&username)
-        .fetch_optional(&self.pg_pool)
-        .await
-        .map_err(|_| Status::internal("Error al consultar la base de datos"))?;
+        let existing_user: Option<(String, String)> =
+            sqlx::query_as("SELECT id, password_hash FROM users WHERE username = $1")
+                .bind(&username)
+                .fetch_optional(&self.pg_pool)
+                .await
+                .map_err(|_| Status::internal("Error al consultar la base de datos"))?;
 
         let user_id = if let Some((db_id, db_hash)) = existing_user {
             // ➡️ FLUJO: LOGIN (El usuario ya existe)
             println!("🔍 Usuario encontrado. Verificando contraseña...");
-            
+
             let is_valid = verify(&password, &db_hash).unwrap_or(false);
-            
+
             if !is_valid {
                 println!("❌ Contraseña incorrecta para: {}", username);
                 return Ok(Response::new(JoinResponse {
@@ -58,21 +57,20 @@ impl UserService for MyAuthServer {
                     message: "Contraseña incorrecta.".to_string(),
                 }));
             }
-            
+
             println!("✅ Login exitoso. Re-creando sesión para: {}", username);
             db_id // Usamos el ID que ya tenía en la base de datos
-            
         } else {
             // ➡️ FLUJO: REGISTRO (El usuario no existe)
             println!("🆕 Usuario nuevo detectado. Iniciando SAGA de registro...");
-            
+
             let new_id = Uuid::new_v4().to_string();
             // Encriptamos la contraseña antes de guardarla
             let hashed_pw = hash(&password, DEFAULT_COST).unwrap();
 
             // PASO 1 DE LA SAGA: Postgres
             let pg_result = sqlx::query(
-                "INSERT INTO users (id, username, password_hash, score) VALUES ($1, $2, $3, 0)"
+                "INSERT INTO users (id, username, password_hash, score) VALUES ($1, $2, $3, 0)",
             )
             .bind(&new_id)
             .bind(&username)
@@ -85,7 +83,7 @@ impl UserService for MyAuthServer {
                 return Err(Status::internal("Error al registrar el nuevo usuario"));
             }
             println!("✅ Paso 1: Usuario guardado en Postgres con ID: {}", new_id);
-            
+
             new_id // Usamos el nuevo ID generado
         };
 
@@ -95,7 +93,7 @@ impl UserService for MyAuthServer {
         let mut redis_conn = match self.redis_client.get_async_connection().await {
             Ok(conn) => conn,
             Err(_) => {
-                // Si es un registro nuevo y Redis falla, hacemos Rollback. 
+                // Si es un registro nuevo y Redis falla, hacemos Rollback.
                 // Si era login, simplemente falla la conexión pero no borramos el usuario.
                 println!("⚠️ Redis no disponible.");
                 let _ = sqlx::query("DELETE FROM users WHERE id = $1 AND score = 0")
@@ -106,27 +104,47 @@ impl UserService for MyAuthServer {
             }
         };
 
+        // Evitar sesiones duplicadas por username
+        let active_key = format!("active_username:{}", username);
+        let active_user: Option<String> = redis_conn.get(&active_key).await.unwrap_or(None);
+        if let Some(active_user_id) = active_user {
+            if active_user_id != user_id {
+                println!("🚫 Usuario ya conectado: {}", username);
+                return Ok(Response::new(JoinResponse {
+                    success: false,
+                    user_id: "".to_string(),
+                    message: "Usuario ya conectado. Cierra la otra sesión primero.".to_string(),
+                }));
+            }
+        }
+
         // Guardamos o actualizamos la sesión (expira en 2 horas)
         let redis_key = format!("session:{}", user_id);
-        let redis_res: redis::RedisResult<()> = redis_conn.set_ex(&redis_key, &username, 7200).await;
+        let redis_res: redis::RedisResult<()> =
+            redis_conn.set_ex(&redis_key, &username, 7200).await;
+        let active_res: redis::RedisResult<()> =
+            redis_conn.set_ex(&active_key, &user_id, 7200).await;
 
-        match redis_res {
-            Ok(_) => {
-                println!("✅ Sesión guardada en Redis. ¡Acceso concedido a {}!", username);
+        match (redis_res, active_res) {
+            (Ok(_), Ok(_)) => {
+                println!(
+                    "✅ Sesión guardada en Redis. ¡Acceso concedido a {}!",
+                    username
+                );
                 Ok(Response::new(JoinResponse {
                     success: true,
                     user_id, // Devolvemos el ID (ya sea el antiguo o el nuevo)
                     message: "Acceso concedido. Esperando al moderador...".to_string(),
                 }))
             }
-            Err(e) => {
+            (Err(e), _) | (_, Err(e)) => {
                 eprintln!("❌ Error en Redis: {}", e);
                 // Compensación en caso de fallo
                 let _ = sqlx::query("DELETE FROM users WHERE id = $1 AND score = 0")
                     .bind(&user_id)
                     .execute(&self.pg_pool)
                     .await;
-                
+
                 Ok(Response::new(JoinResponse {
                     success: false,
                     user_id: "".to_string(),
@@ -169,9 +187,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✅ Tabla 'users' verificada con esquema de seguridad.");
 
     let addr = "0.0.0.0:50052".parse().unwrap();
-    let auth_server = MyAuthServer { 
-        pg_pool, 
-        redis_client 
+    let auth_server = MyAuthServer {
+        pg_pool,
+        redis_client,
     };
 
     println!("🚀 Auth-Service escuchando en: {}", addr);
