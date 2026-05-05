@@ -126,6 +126,7 @@ public class LobbyController {
                         } else if (msg.hasGameState()) {
                             Platform.runLater(() -> handleGameState(msg.getGameState()));
                         } else if (msg.hasNewQuestion()) {
+                            System.out.println("[Lobby] NewQuestion received — switching to arena");
                             // Blank ourselves immediately so subsequent messages go to Arena
                             GrpcClientService.getInstance().setMessageHandler(ignored -> {
                             });
@@ -201,14 +202,21 @@ public class LobbyController {
                     getClass().getResource("/com/arenadepreguntas/client/fxml/arena.fxml"));
             Parent arenaRoot = loader.load();
 
-            ArenaController arenaController = loader.getController();
-            arenaController.displayFirstQuestion(firstQuestion);
-
+            // Switch the scene root FIRST so every node is in the scene graph before
+            // displayFirstQuestion starts animations (FadeTransition, Timeline). Animating
+            // nodes that are not yet in the scene can throw silent RuntimeExceptions.
             Scene scene = waitingContainer.getScene();
             scene.setRoot(arenaRoot);
-        } catch (IOException e) {
+
+            ArenaController arenaController = loader.getController();
+            arenaController.displayFirstQuestion(firstQuestion);
+        } catch (Exception e) {
+            // Catching Exception (not just IOException) because FXMLLoader can throw
+            // RuntimeException from controller initialize(), and any uncaught exception
+            // inside Platform.runLater is silently swallowed by JavaFX.
+            System.err.println("[switchToArena] Failed to load arena screen: " + e.getMessage());
             e.printStackTrace();
-            showError("Failed to load game screen.");
+            showError("Failed to load game screen: " + e.getMessage());
         }
     }
 

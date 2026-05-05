@@ -8,7 +8,7 @@ use redis::AsyncCommands;
 use redis::Client as RedisClient;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::sync::Arc;
 
@@ -157,23 +157,26 @@ async fn broadcast_to_all(state: &Arc<Mutex<RoomState>>, msg: ServerMessage) {
 async fn broadcast_to_approved_and_observers(state: &Arc<Mutex<RoomState>>, msg: ServerMessage) {
     let senders = {
         let state = state.lock().await;
-        let mut senders = Vec::new();
+        let approved_conn_ids: HashSet<u64> = state
+            .players
+            .iter()
+            .filter(|(_, player)| player.status == RoomAccessStatus::RoomAccessGranted)
+            .map(|(_, player)| player.conn_id)
+            .collect();
 
-        for conn in state.connections.values() {
-            if conn.user_id.is_none() {
-                senders.push(conn.sender.clone());
-            }
-        }
-
-        for (_, player) in state.players.iter() {
-            if player.status == RoomAccessStatus::RoomAccessGranted {
-                if let Some(conn) = state.connections.get(&player.conn_id) {
-                    senders.push(conn.sender.clone());
+        state
+            .connections
+            .iter()
+            .filter_map(|(conn_id, conn)| {
+                if conn.user_id.is_none() {
+                    Some(conn.sender.clone())
+                } else if approved_conn_ids.contains(conn_id) {
+                    Some(conn.sender.clone())
+                } else {
+                    None
                 }
-            }
-        }
-
-        senders
+            })
+            .collect::<Vec<_>>()
     };
 
     for sender in senders {
@@ -188,6 +191,12 @@ async fn send_to_user(state: &Arc<Mutex<RoomState>>, user_id: &str, msg: ServerM
             .players
             .get(user_id)
             .and_then(|player| state.connections.get(&player.conn_id))
+            .or_else(|| {
+                state
+                    .connections
+                    .values()
+                    .find(|conn| conn.user_id.as_deref() == Some(user_id))
+            })
             .map(|conn| conn.sender.clone())
     };
 
