@@ -49,7 +49,13 @@ message ServerMessage {
   oneof event {
     QuestionPayload new_question = 1; // [cite: 35]
     LeaderboardUpdate leaderboard = 2; // [cite: 42]
+    EmojiBroadcast emoji_broadcast = 3; // Permite transmitir el emoji
   }
+}
+
+// Estructura para reenviar el emoji a todos
+message EmojiBroadcast {
+  string emoji_code = 1;
 }
 
 // Estructura exacta solicitada en el documento [cite: 71, 72]

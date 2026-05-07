@@ -198,9 +198,13 @@ impl GameService for MyGameServer {
         Ok(Response::new(out_stream))
     }
 
+    // ==========================================
+    // ¡NUEVO! TRANSMITIR EMOJI AL STREAM
+    // ==========================================
     async fn send_emoji(&self, request: Request<EmojiRequest>) -> Result<Response<EmojiAck>, Status> {
         let data = request.into_inner();
         let user_id = data.user_id;
+        let emoji_code = data.emoji_code; // Guardamos el código del emoji
 
         // 🛡️ VALIDACIÓN DE SEGURIDAD CON REDIS EN UNARY
         let mut redis_conn = match self.redis_client.get_async_connection().await {
@@ -216,7 +220,17 @@ impl GameService for MyGameServer {
             return Err(Status::unauthenticated("Sesión de juego inválida o expirada."));
         }
 
-        println!("🚀 Emoji verificado y recibido del jugador [{}]: {}", user_id, data.emoji_code);
+        println!("🚀 Emoji verificado y recibido del jugador [{}]: {}", user_id, emoji_code);
+
+        // ¡AQUÍ ESTÁ LA MAGIA! Disparamos el emoji por el canal bidireccional a todos los jugadores
+        let broadcast_msg = ServerMessage {
+            event: Some(game::server_message::Event::EmojiBroadcast(game::EmojiBroadcast {
+                emoji_code: emoji_code,
+            })),
+        };
+        
+        let _ = self.tx_to_clients.send(broadcast_msg);
+
         Ok(Response::new(EmojiAck { received: true }))
     }
 
