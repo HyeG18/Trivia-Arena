@@ -3,14 +3,15 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio::time::{sleep, Duration};
 
-// IMPORTACIONES PARA LAS BASES DE DATOS
 use dotenvy::dotenv;
 use std::env;
 use sqlx::postgres::PgPool;
 use mongodb::Client as MongoClient;
 use redis::Client as RedisClient;
 use serde::{Deserialize, Serialize}; 
-//use redis::AsyncCommands; 
+
+use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
+use std::sync::Arc;
 
 pub mod game {
     tonic::include_proto!("arena.game"); 
@@ -51,6 +52,11 @@ pub struct MyGameServer {
     pg_pool: PgPool,
     mongo_client: MongoClient, 
     redis_client: RedisClient,
+    
+    active_players: Arc<AtomicUsize>,
+    is_paused: Arc<AtomicBool>,
+    // ¡NUEVO! Control maestro de la partida
+    is_game_active: Arc<AtomicBool>, 
 }
 
 #[tonic::async_trait]
@@ -69,6 +75,12 @@ impl GameService for MyGameServer {
         let tx_global = self.tx_to_clients.clone(); 
         let mongo_client = self.mongo_client.clone(); 
 
+        let active = self.active_players.clone();
+        let paused = self.is_paused.clone();
+
+        active.fetch_add(1, Ordering::SeqCst);
+        paused.store(false, Ordering::SeqCst);
+
         tokio::spawn(async move {
             let mut redis_conn = match redis_client.get_multiplexed_async_connection().await {
                 Ok(conn) => conn,
@@ -80,6 +92,8 @@ impl GameService for MyGameServer {
                     let user_id = player_response.user_id;
                     let user_answer = player_response.answer;
                     
+                    if user_answer.is_empty() { continue; }
+
                     let session_key = format!("session:{}", user_id);
                     let username_opt: Option<String> = redis::cmd("GET")
                         .arg(&session_key).query_async(&mut redis_conn).await.unwrap_or(None);
@@ -95,13 +109,9 @@ impl GameService for MyGameServer {
                     let mut puntos_ganados = 0;
                     let mut es_correcta = false;
 
-                    // Aquí asumimos que todos están en la misma pregunta, simplificado para evaluación
                     if let Ok(Some(question)) = collection.find_one(None, None).await {
-                        // Ojo: En una app real de prod se validaría contra la pregunta actual
-                        // Para este proyecto validamos si lo que mandó es la respuesta correcta de *alguna* pregunta activa.
                         let correct_text = &question.options[question.correct_option_index as usize];
                         
-                        // Adaptación rápida para el prototipo
                         let is_correct_in_db = user_answer.contains("Saga") || user_answer.contains("6379") 
                             || user_answer.contains("Remote") || user_answer.contains("FETCH")
                             || user_answer.contains("Go") || user_answer.contains("MongoDB")
@@ -140,6 +150,13 @@ impl GameService for MyGameServer {
                     }
                 }
             }
+
+            let previous = active.fetch_sub(1, Ordering::SeqCst);
+            let current_active = if previous > 0 { previous - 1 } else { 0 };
+            
+            if current_active == 0 {
+                paused.store(true, Ordering::SeqCst);
+            }
         });
 
         tokio::spawn(async move {
@@ -160,18 +177,19 @@ impl GameService for MyGameServer {
         Ok(Response::new(EmojiAck { received: true }))
     }
 
-    // ==========================================
-    // MAGIA: LANZAR 10 PREGUNTAS AUTOMÁTICAMENTE
-    // ==========================================
     async fn launch_question(&self, _request: Request<QuestionPayload>) -> Result<Response<ModeratorAck>, Status> {
+        // ¡SOLUCIÓN BUG 2!: Prevenir múltiples partidas al mismo tiempo
+        if self.is_game_active.load(Ordering::SeqCst) {
+            println!("⚠️ Intento de lanzar preguntas mientras ya hay una partida activa. Ignorado.");
+            return Ok(Response::new(ModeratorAck { success: true }));
+        }
+
         let db = self.mongo_client.database("arena_db");
         let collection = db.collection::<MongoQuestion>("questions");
 
-        // Obtenemos todas las preguntas de la BD
         let mut cursor = collection.find(None, None).await.unwrap();
         let mut questions = Vec::new();
         
-        // Usamos los metodos nativos del driver de Mongo para iterar sin importar dependencias
         while cursor.advance().await.unwrap_or(false) {
             if let Ok(q) = cursor.deserialize_current() {
                 questions.push(q);
@@ -182,41 +200,80 @@ impl GameService for MyGameServer {
             return Ok(Response::new(ModeratorAck { success: false }));
         }
 
-        let tx = self.tx_to_clients.clone();
+        // Marcamos el juego como activo
+        self.is_game_active.store(true, Ordering::SeqCst);
 
-        // Creamos una tarea en segundo plano que manejará los 20 segundos por pregunta
+        let tx = self.tx_to_clients.clone();
+        let is_paused = self.is_paused.clone(); 
+        let is_game_active = self.is_game_active.clone(); // Clonamos la referencia de actividad
+
         tokio::spawn(async move {
             for (i, question) in questions.into_iter().enumerate() {
+                // Si alguien forzó el final, rompemos el ciclo de preguntas inmediatamente
+                if !is_game_active.load(Ordering::SeqCst) {
+                    break;
+                }
+
                 println!("📚 Lanzando pregunta {}/10: {}", i+1, question.text);
 
                 let payload = QuestionPayload {
                     text: format!("Pregunta {}: {}", i + 1, question.text),
                     options: question.options,
-                    time_limit_sec: 20, // Forzamos 20 segundos
+                    time_limit_sec: 20, 
                 };
 
                 let msg = ServerMessage { event: Some(game::server_message::Event::NewQuestion(payload)) };
                 let _ = tx.send(msg);
 
-                // Esperamos automáticamente los 20 segundos antes de enviar la siguiente
-                sleep(Duration::from_secs(20)).await;
+                let mut elapsed_ms = 0;
+                while elapsed_ms < 20_000 {
+                    // Si alguien forzó el final en medio de una pregunta, salimos del cronómetro
+                    if !is_game_active.load(Ordering::SeqCst) {
+                        break;
+                    }
+
+                    if is_paused.load(Ordering::SeqCst) {
+                        sleep(Duration::from_millis(200)).await;
+                    } else {
+                        sleep(Duration::from_millis(200)).await;
+                        elapsed_ms += 200;
+                    }
+                }
             }
 
-            println!("🏁 Finalizando partida y notificando a los jugadores...");
-            let end_payload = QuestionPayload {
-                text: "🏁 ¡Juego Terminado! Esperando guardado en DB...".to_string(),
-                options: vec![], // Vacío = Pantalla de fin en Java
-                time_limit_sec: 0,
-            };
-            let end_msg = ServerMessage { event: Some(game::server_message::Event::NewQuestion(end_payload)) };
-            let _ = tx.send(end_msg);
+            // Si llegamos hasta aquí y el juego sigue activo, significa que terminó de forma natural (llegó a la pregunta 10)
+            if is_game_active.load(Ordering::SeqCst) {
+                println!("🏁 Finalizando partida naturalmente...");
+                let end_payload = QuestionPayload {
+                    text: "🏁 ¡Juego Terminado! Esperando guardado en DB...".to_string(),
+                    options: vec![], 
+                    time_limit_sec: 0,
+                };
+                let end_msg = ServerMessage { event: Some(game::server_message::Event::NewQuestion(end_payload)) };
+                let _ = tx.send(end_msg);
+                
+                // Apagamos el estado de partida
+                is_game_active.store(false, Ordering::SeqCst);
+            }
         });
 
-        // Retornamos de inmediato para no bloquear el panel del moderador de Python
         Ok(Response::new(ModeratorAck { success: true }))
     }
 
     async fn force_end_timer(&self, _request: Request<ForceEndRequest>) -> Result<Response<ModeratorAck>, Status> {
+        println!("🛑 Finalizando partida forzosamente por el Moderador...");
+        
+        // ¡SOLUCIÓN BUG 1!: Apagamos la bandera para detener el hilo del cronómetro inmediatamente
+        self.is_game_active.store(false, Ordering::SeqCst);
+
+        // Notificamos inmediatamente a las pantallas de Java para que detengan los relojes visuales
+        let force_end_payload = QuestionPayload {
+            text: "🛑 ¡Juego Terminado Forzosamente! Guardando datos...".to_string(),
+            options: vec![], // Al enviar un arreglo vacío, Java apaga la interfaz
+            time_limit_sec: 0,
+        };
+        let _ = self.tx_to_clients.send(ServerMessage { event: Some(game::server_message::Event::NewQuestion(force_end_payload)) });
+
         println!("🛑 Sincronizando puntos con PostgreSQL...");
         let mut redis_conn = match self.redis_client.get_multiplexed_async_connection().await {
             Ok(conn) => conn, Err(_) => return Err(Status::internal("Error conectando Redis")),
@@ -235,18 +292,12 @@ impl GameService for MyGameServer {
     }
 }
 
-// ==========================================
-// SEED: 10 PREGUNTAS MONGODB
-// ==========================================
 async fn seed_mongodb_if_empty(client: &MongoClient) -> Result<(), Box<dyn std::error::Error>> {
     let db = client.database("arena_db");
     let collection = db.collection::<MongoQuestion>("questions");
 
-    // Limpiamos la colección para forzar la carga de las 10 preguntas
     let _ = collection.drop(None).await;
 
-    println!("📦 Insertando 10 preguntas en MongoDB...");
-    
     let questions = vec![
         MongoQuestion { text: "¿Cuál es el patrón de diseño para revertir transacciones en microservicios?".to_string(), options: vec!["CQRS".to_string(), "Saga".to_string(), "Event Sourcing".to_string(), "Circuit Breaker".to_string()], correct_option_index: 1, time_limit_sec: 20 },
         MongoQuestion { text: "¿Qué puerto usa Redis por defecto en Docker?".to_string(), options: vec!["5432".to_string(), "27017".to_string(), "6379".to_string(), "8080".to_string()], correct_option_index: 2, time_limit_sec: 20 },
@@ -261,8 +312,6 @@ async fn seed_mongodb_if_empty(client: &MongoClient) -> Result<(), Box<dyn std::
     ];
 
     collection.insert_many(questions, None).await?;
-    println!("✅ 10 Preguntas insertadas exitosamente.");
-    
     Ok(())
 }
 
@@ -285,7 +334,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "0.0.0.0:50051".parse().unwrap(); 
     let (tx, _) = broadcast::channel(100);
     
-    let game_server = MyGameServer { tx_to_clients: tx, pg_pool, mongo_client, redis_client };
+    let game_server = MyGameServer { 
+        tx_to_clients: tx, 
+        pg_pool, 
+        mongo_client, 
+        redis_client,
+        active_players: Arc::new(AtomicUsize::new(0)),
+        is_paused: Arc::new(AtomicBool::new(false)),
+        is_game_active: Arc::new(AtomicBool::new(false)), // Inicializado en falso
+    };
 
     println!("🚀 Servidor Arena escuchando en {}", addr);
     Server::builder().add_service(GameServiceServer::new(game_server)).serve(addr).await?;

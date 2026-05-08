@@ -1,5 +1,6 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
+import socket
 import grpc
 
 # Importamos los archivos generados por gRPC
@@ -13,9 +14,30 @@ class ModeratorApp:
         self.root.geometry("450x300")
         self.root.configure(bg="#2c3e50")
         
+        # --- AUTO-DETECTAR IP LOCAL ---
+        try:
+            # Crea un socket temporal para descubrir la IP de la interfaz de red principal
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+        except Exception:
+            local_ip = "127.0.0.1"
+
+        # Mostrar ventana pidiendo la IP (con la local por defecto)
+        self.root.withdraw() # Ocultamos la principal momentáneamente
+        server_ip = simpledialog.askstring("Conexión", "Ingresa la IP del Servidor Game Engine:", initialvalue=local_ip)
+        
+        if not server_ip:
+            messagebox.showerror("Error", "Se necesita una IP para conectarse al servidor.")
+            self.root.destroy()
+            return
+            
+        self.root.deiconify() # Mostramos la principal
+
         # --- CONFIGURACIÓN gRPC ---
-        # Nos conectamos al API Gateway en el puerto 8080
-        self.channel = grpc.insecure_channel('localhost:8080')
+        # Nos conectamos al API Gateway usando la IP proporcionada
+        self.channel = grpc.insecure_channel(f'{server_ip}:8080')
         self.stub = game_pb2_grpc.GameServiceStub(self.channel)
         
         # --- INTERFAZ GRÁFICA (UI) ---
@@ -46,30 +68,23 @@ class ModeratorApp:
     # --- LÓGICA DE NEGOCIO ---
     def launch_question(self):
         try:
-            # Creamos el payload. Como nuestro backend de Rust busca directamente 
-            # en MongoDB, enviamos un Request vacío/dummy.
             req = game_pb2.QuestionPayload(text="Siguiente", options=[], time_limit_sec=0)
-            
-            # Hacemos la llamada RPC al servidor
             response = self.stub.LaunchQuestion(req)
             
             if response.success:
-                messagebox.showinfo("Éxito", "¡Pregunta lanzada a todos los jugadores conectados!")
+                messagebox.showinfo("Éxito", "¡Preguntas automáticas lanzadas a los jugadores conectados!")
             else:
                 messagebox.showwarning("Aviso", "No se pudo lanzar. ¿Quizás MongoDB está vacío?")
                 
         except grpc.RpcError as e:
-            messagebox.showerror("Error de Servidor", f"El backend no responde:\n{e.details()}")
+            messagebox.showerror("Error de Servidor", f"El backend no responde o se perdió la conexión.\n\nRevisa tu red.\n\nDetalles técnicos: {e.details()}")
 
     def force_end(self):
-        # Preguntamos por confirmación antes de acabar el juego
         if not messagebox.askyesno("Confirmar", "¿Estás seguro de finalizar la partida y guardar todos los puntos en PostgreSQL?"):
             return
 
         try:
             req = game_pb2.ForceEndRequest(moderator_id="admin_python")
-            
-            # Hacemos la llamada RPC al servidor
             response = self.stub.ForceEndTimer(req)
             
             if response.success:
@@ -78,10 +93,9 @@ class ModeratorApp:
                 messagebox.showerror("Error", "Ocurrió un problema finalizando la partida.")
                 
         except grpc.RpcError as e:
-            messagebox.showerror("Error de Servidor", f"El backend no responde:\n{e.details()}")
+            messagebox.showerror("Error de Servidor", f"El backend no responde o se perdió la conexión.\n{e.details()}")
 
 if __name__ == "__main__":
-    # Iniciar la aplicación gráfica
     ventana_principal = tk.Tk()
     app = ModeratorApp(ventana_principal)
     ventana_principal.mainloop()
