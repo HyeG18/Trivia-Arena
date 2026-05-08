@@ -10,6 +10,7 @@ import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -33,7 +34,7 @@ public class TriviaClientApp extends JFrame {
     private JPanel mainPanel;
     private CardLayout cardLayout;
 
-    private JTextField ipField; // NUEVO: Campo para la IP
+    private JTextField ipField; 
     private JTextField userField;
     private JPasswordField passField;
     private JLabel loginStatusLabel;
@@ -46,9 +47,18 @@ public class TriviaClientApp extends JFrame {
     private JProgressBar timerBar;
     private Timer questionTimer;
 
+    // --- NUEVO: Paleta de colores gamificada ---
+    private final Color BG_PURPLE = new Color(138, 43, 226); 
+    private final Color[] BTN_COLORS = {
+        new Color(231, 76, 60),  // Rojo
+        new Color(52, 152, 219), // Azul
+        new Color(241, 196, 15), // Amarillo
+        new Color(46, 204, 113)  // Verde
+    };
+
     public TriviaClientApp() {
         setTitle("Trivia Arena - Jugador");
-        setSize(650, 650); 
+        setSize(800, 700); // Ampliado para mejor visualización de los botones
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
         cardLayout = new CardLayout();
@@ -73,14 +83,14 @@ public class TriviaClientApp extends JFrame {
 
     private JPanel createLoginPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBackground(new Color(44, 62, 80));
+        panel.setBackground(BG_PURPLE); // Estilo: Fondo morado
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(10, 10, 10, 10);
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
 
         JLabel title = new JLabel("Bienvenido a Trivia Arena");
         title.setForeground(Color.WHITE);
-        title.setFont(new Font("Arial", Font.BOLD, 24));
+        title.setFont(new Font("Arial", Font.BOLD, 28)); // Letra más grande
         panel.add(title, gbc);
 
         // --- AUTO-DETECTAR IP LOCAL ---
@@ -89,6 +99,7 @@ public class TriviaClientApp extends JFrame {
         gbc.gridwidth = 1; gbc.gridy = 1;
         JLabel ipLabel = new JLabel("IP del Servidor:");
         ipLabel.setForeground(Color.WHITE);
+        ipLabel.setFont(new Font("Arial", Font.BOLD, 14));
         panel.add(ipLabel, gbc);
 
         gbc.gridx = 1;
@@ -98,6 +109,7 @@ public class TriviaClientApp extends JFrame {
         gbc.gridx = 0; gbc.gridy = 2;
         JLabel userLabel = new JLabel("Usuario:");
         userLabel.setForeground(Color.WHITE);
+        userLabel.setFont(new Font("Arial", Font.BOLD, 14));
         panel.add(userLabel, gbc);
 
         gbc.gridx = 1;
@@ -107,6 +119,7 @@ public class TriviaClientApp extends JFrame {
         gbc.gridx = 0; gbc.gridy = 3;
         JLabel passLabel = new JLabel("Contraseña:");
         passLabel.setForeground(Color.WHITE);
+        passLabel.setFont(new Font("Arial", Font.BOLD, 14));
         panel.add(passLabel, gbc);
 
         gbc.gridx = 1;
@@ -115,8 +128,10 @@ public class TriviaClientApp extends JFrame {
 
         gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2;
         JButton loginBtn = new JButton("Entrar a la Arena");
+        loginBtn.setFont(new Font("Arial", Font.BOLD, 16));
         loginBtn.setBackground(new Color(39, 174, 96));
         loginBtn.setForeground(Color.WHITE);
+        loginBtn.setFocusPainted(false);
         loginBtn.addActionListener(e -> attemptLogin());
         panel.add(loginBtn, gbc);
 
@@ -128,7 +143,6 @@ public class TriviaClientApp extends JFrame {
         return panel;
     }
 
-    // Método robusto para obtener la IP real (no 127.0.0.1)
     private String getLocalIP() {
         try {
             Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
@@ -154,7 +168,6 @@ public class TriviaClientApp extends JFrame {
         String password = new String(passField.getPassword());
 
         try {
-            // NOS CONECTAMOS USANDO LA IP DEL CAMPO DE TEXTO
             channel = ManagedChannelBuilder.forAddress(serverIp, 8080)
                     .usePlaintext()
                     .build();
@@ -181,48 +194,68 @@ public class TriviaClientApp extends JFrame {
         }
     }
 
-    // ... (Mantén createGamePanel() igual que antes) ...
     private JPanel createGamePanel() {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        JPanel panel = new JPanel(new BorderLayout(15, 15));
+        panel.setBackground(BG_PURPLE); // Estilo: Fondo morado
+        panel.setBorder(new EmptyBorder(20, 20, 20, 20));
 
-        JPanel topPanel = new JPanel(new BorderLayout(5, 5));
+        JPanel topPanel = new JPanel(new BorderLayout(10, 15));
+        topPanel.setOpaque(false); // Estilo: Transparente
         
         timerBar = new JProgressBar(0, 20000);
         timerBar.setValue(20000);
         timerBar.setStringPainted(true);
         timerBar.setString("Esperando...");
         timerBar.setForeground(new Color(46, 204, 113)); 
+        timerBar.setBackground(Color.WHITE);
         topPanel.add(timerBar, BorderLayout.NORTH);
 
+        // Estilo: Caja de pregunta blanca
+        JPanel questionBox = new JPanel(new BorderLayout());
+        questionBox.setBackground(Color.WHITE);
+        questionBox.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.LIGHT_GRAY, 2, true),
+                new EmptyBorder(30, 20, 30, 20)
+        ));
+
         questionLabel = new JLabel("Esperando a que el moderador inicie...", SwingConstants.CENTER);
-        questionLabel.setFont(new Font("Arial", Font.BOLD, 18));
-        topPanel.add(questionLabel, BorderLayout.CENTER);
+        questionLabel.setFont(new Font("Arial", Font.BOLD, 22)); // Letra más grande
+        questionBox.add(questionLabel, BorderLayout.CENTER);
+        topPanel.add(questionBox, BorderLayout.CENTER);
 
         emojiDisplayLabel = new JLabel(" ", SwingConstants.CENTER);
-        emojiDisplayLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 40));
+        emojiDisplayLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 45));
         topPanel.add(emojiDisplayLabel, BorderLayout.SOUTH);
 
         panel.add(topPanel, BorderLayout.NORTH);
 
-        optionsPanel = new JPanel(new GridLayout(2, 2, 10, 10));
+        optionsPanel = new JPanel(new GridLayout(2, 2, 15, 15));
+        optionsPanel.setOpaque(false); // Estilo: Transparente
         panel.add(optionsPanel, BorderLayout.CENTER);
 
-        JPanel southPanel = new JPanel(new BorderLayout(5, 5));
+        JPanel southPanel = new JPanel(new BorderLayout(10, 10));
+        southPanel.setOpaque(false); // Estilo: Transparente
 
-        leaderboardArea = new JTextArea(8, 30);
+        leaderboardArea = new JTextArea(6, 30);
         leaderboardArea.setEditable(false);
-        leaderboardArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
+        leaderboardArea.setFont(new Font("Monospaced", Font.BOLD, 14));
+        leaderboardArea.setBorder(new EmptyBorder(5, 5, 5, 5));
         southPanel.add(new JScrollPane(leaderboardArea), BorderLayout.CENTER);
 
         JPanel emojiButtonsPanel = new JPanel(new FlowLayout());
-        emojiButtonsPanel.setBorder(BorderFactory.createTitledBorder("Reacciones"));
+        emojiButtonsPanel.setOpaque(false); // Estilo: Transparente
+
+        JLabel reactionLabel = new JLabel("Reacciones: ");
+        reactionLabel.setForeground(Color.WHITE);
+        reactionLabel.setFont(new Font("Arial", Font.BOLD, 14));
+        emojiButtonsPanel.add(reactionLabel);
 
         String[] emojis = { "🚀", "😂", "😭" };
         for (String em : emojis) {
             JButton btn = new JButton(em);
             btn.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 24));
             btn.setFocusPainted(false);
+            btn.setBackground(Color.WHITE);
             btn.addActionListener(e -> sendEmojiToServer(em));
             emojiButtonsPanel.add(btn);
         }
@@ -259,10 +292,9 @@ public class TriviaClientApp extends JFrame {
 
             @Override 
             public void onError(Throwable t) { 
-                // --- MANEJO DE DESCONEXIÓN ---
                 SwingUtilities.invokeLater(() -> {
-                    if (questionTimer != null) questionTimer.stop(); // Congela la barra visual
-                    getGlassPane().setVisible(true); // Oscurece la pantalla
+                    if (questionTimer != null) questionTimer.stop(); 
+                    getGlassPane().setVisible(true); 
                     attemptReconnect();
                 });
             }
@@ -275,7 +307,6 @@ public class TriviaClientApp extends JFrame {
         requestObserver.onNext(ClientMessage.newBuilder().setAnswer(ping).build());
     }
 
-    // --- INTENTO DE RECONEXIÓN EN 2DO PLANO ---
     private void attemptReconnect() {
         if (isReconnecting) return;
         isReconnecting = true;
@@ -284,20 +315,18 @@ public class TriviaClientApp extends JFrame {
             boolean connected = false;
             while (!connected) {
                 try {
-                    Thread.sleep(3000); // Intenta conectarse cada 3 segundos
+                    Thread.sleep(3000); 
                     
-                    // Crea un stream de prueba. Si falla, saltará al catch.
                     gameBlockingStub.sendEmoji(EmojiRequest.newBuilder().setUserId("ping").setEmojiCode("ping").build());
                     
-                    // Si llegamos aquí, ¡el servidor volvió!
                     connectToGameStream(); 
                     connected = true;
                     isReconnecting = false;
                     
                     SwingUtilities.invokeLater(() -> {
-                        getGlassPane().setVisible(false); // Quita la pantalla oscura
+                        getGlassPane().setVisible(false); 
                         if (questionTimer != null && timerBar.getValue() > 0) {
-                            questionTimer.start(); // Reanuda la barra visual
+                            questionTimer.start(); 
                         }
                     });
                 } catch (Exception e) {
@@ -315,7 +344,8 @@ public class TriviaClientApp extends JFrame {
     }
 
     private void handleNewQuestion(QuestionPayload q) {
-        questionLabel.setText(q.getText());
+        // Estilo: Centrado HTML para la pregunta
+        questionLabel.setText("<html><div style='text-align: center;'>" + q.getText() + "</div></html>");
         optionsPanel.removeAll();
         
         if (questionTimer != null) {
@@ -358,11 +388,22 @@ public class TriviaClientApp extends JFrame {
         });
         questionTimer.start();
 
+        // Estilo: Botones de colores
+        int colorIndex = 0;
         for (String optionText : q.getOptionsList()) {
             JButton btn = new JButton(optionText);
-            btn.setFont(new Font("Arial", Font.BOLD, 14));
+            btn.setFont(new Font("Arial", Font.BOLD, 18));
+            btn.setForeground(Color.WHITE);
+            
+            if (colorIndex < BTN_COLORS.length) {
+                btn.setBackground(BTN_COLORS[colorIndex]);
+                btn.setOpaque(true);
+            }
+            
+            btn.setFocusPainted(false);
             btn.addActionListener(e -> sendAnswer(optionText));
             optionsPanel.add(btn);
+            colorIndex++;
         }
 
         optionsPanel.revalidate();
@@ -397,6 +438,11 @@ public class TriviaClientApp extends JFrame {
     }
 
     public static void main(String[] args) {
+        // Estilo: Forzar renderizado de colores en Windows/Mac
+        try {
+            UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+        } catch (Exception e) {}
+
         SwingUtilities.invokeLater(() -> {
             TriviaClientApp app = new TriviaClientApp();
             app.setVisible(true);
