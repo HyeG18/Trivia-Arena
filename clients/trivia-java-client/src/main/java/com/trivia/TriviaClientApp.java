@@ -144,22 +144,14 @@ public class TriviaClientApp extends JFrame {
     }
 
     private String getLocalIP() {
-        try {
-            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-            while (interfaces.hasMoreElements()) {
-                NetworkInterface iface = interfaces.nextElement();
-                if (iface.isLoopback() || !iface.isUp()) continue;
-
-                Enumeration<InetAddress> addresses = iface.getInetAddresses();
-                while(addresses.hasMoreElements()) {
-                    InetAddress addr = addresses.nextElement();
-                    if (addr.getHostAddress().contains(".")) {
-                        return addr.getHostAddress();
-                    }
-                }
-            }
-        } catch (Exception e) {}
-        return "127.0.0.1";
+        try (java.net.DatagramSocket socket = new java.net.DatagramSocket()) {
+            // Simulamos una conexión hacia afuera (el DNS de Google)
+            socket.connect(java.net.InetAddress.getByName("8.8.8.8"), 80);
+            // Le preguntamos al socket qué IP local usó para esa ruta
+            return socket.getLocalAddress().getHostAddress();
+        } catch (Exception e) {
+            return "127.0.0.1";
+        }
     }
 
     private void attemptLogin() {
