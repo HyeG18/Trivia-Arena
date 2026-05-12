@@ -99,7 +99,4 @@ Frontend: Java (Swing, grpc-java), Python (Tkinter, grpcio).
 
 Protocolo: gRPC, Protocol Buffers (Protobuf), HTTP/2.
 
-✒️ Autores
-[Tu Nombre/Usuario de GitHub] - Diseño de Arquitectura, Desarrollo y Despliegue.
-
 Proyecto desarrollado para la cátedra de Computación en la Nube / Sistemas Distribuidos - Semestre 2026.
